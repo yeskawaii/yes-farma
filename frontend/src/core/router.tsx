@@ -1,0 +1,37 @@
+import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { MainLayout } from '../shared/components/Layout/MainLayout';
+import { LoginPage } from '../features/auth/LoginPage';
+import { DashboardPage } from '../features/dashboard/DashboardPage';
+
+export const router = createBrowserRouter([
+  {
+    path: '/login',
+    element: <LoginPage />,
+  },
+  {
+    path: '/',
+    element: <MainLayout />,
+    children: [
+      {
+        path: '/',
+        element: <Navigate to="/dashboard" replace />,
+      },
+      {
+        path: 'dashboard',
+        element: <DashboardPage />,
+      },
+      {
+        path: 'patients',
+        element: <div className="p-8"><h2>Patients Module (Coming Soon)</h2></div>,
+      },
+      {
+        path: 'appointments',
+        element: <div className="p-8"><h2>Appointments Module (Coming Soon)</h2></div>,
+      },
+    ],
+  },
+  {
+    path: '*',
+    element: <Navigate to="/login" replace />,
+  }
+]);
