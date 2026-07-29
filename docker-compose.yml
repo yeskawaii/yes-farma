@@ -3,10 +3,8 @@ services:
     image: postgres:15-alpine
     container_name: yes-farma-db
     restart: unless-stopped
-    environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: adminpassword
-      POSTGRES_DB: yes_farma_db
+    env_file:
+      - ./backend/.env
     ports:
       - "5433:5432"
     volumes:
@@ -22,8 +20,9 @@ services:
     restart: unless-stopped
     ports:
       - "3001:3000"
+    env_file:
+      - ./backend/.env
     environment:
-      - DATABASE_URL=postgresql://admin:adminpassword@db:5432/yes_farma_db?schema=public
       - PORT=3000
     depends_on:
       db:
