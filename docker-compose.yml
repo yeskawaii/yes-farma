@@ -1,10 +1,8 @@
-version: '3.8'
-
 services:
   db:
     image: postgres:15-alpine
     container_name: yes-farma-db
-    restart: always
+    restart: unless-stopped
     environment:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: adminpassword
@@ -13,33 +11,42 @@ services:
       - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - proxy-network
 
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: yes-farma-backend
-    restart: always
+    restart: unless-stopped
     ports:
       - "3001:3000"
     environment:
       - DATABASE_URL=postgresql://admin:adminpassword@db:5432/yes_farma_db?schema=public
       - PORT=3000
     depends_on:
-      - db
+      db:
+        condition: service_started
     volumes:
       - ./backend/src:/usr/src/app/src
+    networks:
+      - proxy-network
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: yes-farma-frontend
-    restart: always
-    ports:
-      - "3000:80"
+    restart: unless-stopped
     depends_on:
       - backend
+    networks:
+      - proxy-network
 
 volumes:
   pgdata:
+
+networks:
+  proxy-network:
+    external: true
