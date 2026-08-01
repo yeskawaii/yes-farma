@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, HeartPulse, Activity } from 'lucide-react';
 import { useAuth } from '../../core/auth/AuthProvider';
 
 export function LoginPage() {
@@ -25,7 +25,6 @@ export function LoginPage() {
 
     try {
       await login(email, password);
-      // Navigate is handled by the useEffect above when status changes to 'authenticated'
     } catch (err: any) {
       setError(err.message || 'Error al iniciar sesión.');
     } finally {
@@ -34,60 +33,68 @@ export function LoginPage() {
   };
 
   if (status === 'loading' || status === 'authenticated') {
-    return <div className="flex min-h-screen bg-[var(--background)] items-center justify-center">Cargando...</div>;
+    return (
+      <div className="flex min-h-screen bg-[var(--background)] items-center justify-center flex-col gap-4">
+        <Activity className="animate-spin text-[var(--primary)]" size={32} />
+        <span className="text-[var(--text-muted)] font-medium">Cargando plataforma...</span>
+      </div>
+    );
   }
 
   return (
-    <div className="flex min-h-screen bg-[var(--background)]">
+    <div className="flex min-h-screen bg-[var(--background)] font-sans">
 
-      {/* Visual Panel for Desktop */}
-      <div className="hidden md:flex flex-1 relative bg-gradient-to-br from-[var(--primary)] to-emerald-900 overflow-hidden flex-col items-center justify-center text-white">
-        <div className="absolute top-0 left-0 w-full h-full z-0 opacity-20 pointer-events-none">
-          <div className="absolute w-[600px] h-[600px] rounded-full border border-white/20 -top-48 -left-48"></div>
-          <div className="absolute w-[800px] h-[800px] rounded-full border border-white/20 -bottom-64 -right-32"></div>
+      {/* Panel Visual - Lado Izquierdo (Desktop) */}
+      <div className="hidden lg:flex flex-1 relative bg-[#EAF4FF] overflow-hidden flex-col items-center justify-center border-r border-[var(--border)]">
+        {/* Formas abstractas suaves y clínicas */}
+        <div className="absolute top-0 left-0 w-full h-full z-0 pointer-events-none opacity-40">
+          <div className="absolute w-[800px] h-[800px] rounded-full bg-white/40 blur-3xl -top-48 -left-48"></div>
+          <div className="absolute w-[600px] h-[600px] rounded-full bg-[#D1E8FF] blur-3xl -bottom-32 -right-32"></div>
         </div>
 
-        <div className="z-10 text-center animate-slide-up">
-          <div className="w-24 h-24 mx-auto mb-8 bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl flex items-center justify-center text-4xl font-extrabold shadow-2xl">
-            YF
+        <div className="z-10 text-center animate-slide-up flex flex-col items-center max-w-md px-8">
+          <div className="w-20 h-20 mb-8 bg-white rounded-2xl flex items-center justify-center shadow-lg border border-blue-100">
+            <HeartPulse className="text-[var(--primary)]" size={40} />
           </div>
-          <h1 className="text-5xl font-bold mb-4 tracking-tight">Yes Farma</h1>
-          <p className="text-xl font-medium text-emerald-100">Modern clinics on the go.</p>
+          <h1 className="text-4xl font-bold mb-4 text-[#0F172A] tracking-tight">Portal Clínico Yes Farma</h1>
+          <p className="text-lg text-[#334155] leading-relaxed">
+            Gestión médica profesional, segura y centralizada para tu consultorio.
+          </p>
         </div>
       </div>
 
-      {/* Form Panel */}
-      <div className="flex-1 flex flex-col justify-center px-6 sm:px-12 md:px-24 bg-[var(--background)] relative">
+      {/* Panel Formulario - Lado Derecho */}
+      <div className="flex-1 flex flex-col justify-center px-6 sm:px-12 md:px-24 bg-[var(--surface)] relative">
+        <div className="w-full max-w-sm mx-auto">
 
-        <div className="w-full max-w-md mx-auto">
-          {/* Mobile Hero (Hidden on Desktop) */}
-          <div className="md:hidden flex flex-col items-center text-center gap-4 mb-12 animate-slide-up">
-            <div className="w-20 h-20 bg-[var(--text-main)] text-[var(--background)] rounded-2xl flex items-center justify-center font-extrabold text-3xl shadow-lg">
-              YF
+          {/* Cabecera Móvil (Oculta en Desktop) */}
+          <div className="lg:hidden flex flex-col items-center text-center gap-3 mb-10 animate-slide-up">
+            <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center shadow-sm border border-blue-100">
+              <HeartPulse className="text-[var(--primary)]" size={32} />
             </div>
-            <h1 className="text-4xl font-bold text-[var(--text-main)] tracking-tight">Yes Farma</h1>
-            <p className="text-lg font-medium text-[var(--text-muted)]">Clinics on the go.</p>
+            <h1 className="text-3xl font-bold text-[var(--text-main)] tracking-tight">Yes Farma</h1>
+            <p className="text-base text-[var(--text-muted)]">Portal Clínico</p>
           </div>
 
-          {/* Desktop Form Header */}
-          <div className="hidden md:block mb-10 animate-slide-up delay-100">
-            <h2 className="text-3xl font-bold text-[var(--text-main)]">Welcome back, Doctor</h2>
-            <p className="text-[var(--text-muted)] mt-2">Sign in to access your portal</p>
+          {/* Cabecera Formulario Desktop */}
+          <div className="hidden lg:block mb-10 animate-slide-up delay-100">
+            <h2 className="text-3xl font-bold text-[var(--text-main)]">Bienvenido, Dr.</h2>
+            <p className="text-[var(--text-muted)] mt-2">Ingresa tus credenciales para acceder</p>
           </div>
 
           <form className="flex flex-col gap-5 animate-slide-up delay-200" onSubmit={handleLogin}>
             {error && (
-              <div className="p-3 bg-red-100 text-red-700 rounded-lg text-sm font-semibold">
+              <div className="p-3.5 bg-red-50 text-red-700 border border-red-200 rounded-xl text-sm font-medium">
                 {error}
               </div>
             )}
 
-            <div>
-              <label className="hidden md:block text-sm font-semibold mb-1.5 text-[var(--text-main)]">Email Address</label>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-[var(--text-main)]">Correo electrónico</label>
               <input
                 type="email"
                 className="input-base"
-                placeholder="Doctor's Email"
+                placeholder="doctor@clinica.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -95,8 +102,8 @@ export function LoginPage() {
               />
             </div>
 
-            <div>
-              <label className="hidden md:block text-sm font-semibold mb-1.5 text-[var(--text-main)]">Password</label>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-[var(--text-main)]">Contraseña</label>
               <input
                 type="password"
                 className="input-base"
@@ -108,16 +115,16 @@ export function LoginPage() {
               />
             </div>
 
-            <div className="flex items-center justify-between text-sm mt-2 mb-2">
-              <label className="flex items-center gap-2 text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-main)] transition-colors">
-                <input type="checkbox" className="w-4 h-4 rounded border-[var(--border)] text-[var(--text-main)] focus:ring-[var(--text-main)]" disabled={isLoading} />
-                Remember me
-              </label>
-              <a href="#" className="font-semibold text-[var(--text-main)] hover:underline">Forgot password?</a>
-            </div>
-
-            <button type="submit" className="btn-primary mt-2 flex items-center justify-center disabled:opacity-50" disabled={isLoading}>
-              {isLoading ? 'Signing In...' : <>Sign In <ChevronRight size={18} /></>}
+            <button type="submit" className="btn-primary mt-4" disabled={isLoading}>
+              {isLoading ? (
+                <>
+                  <Activity className="animate-spin" size={18} /> Validando...
+                </>
+              ) : (
+                <>
+                  Ingresar al sistema <ChevronRight size={18} />
+                </>
+              )}
             </button>
           </form>
         </div>

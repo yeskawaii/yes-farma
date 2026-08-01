@@ -27,11 +27,11 @@ export const router = createBrowserRouter([
           },
           {
             path: 'patients',
-            element: <div className="p-8"><h2>Patients Module (Coming Soon)</h2></div>,
+            element: <div className="p-8"><h2>Módulo de Pacientes (Próximamente)</h2></div>,
           },
           {
             path: 'appointments',
-            element: <div className="p-8"><h2>Appointments Module (Coming Soon)</h2></div>,
+            element: <div className="p-8"><h2>Módulo de Agenda (Próximamente)</h2></div>,
           },
         ],
       }

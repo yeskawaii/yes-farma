@@ -1,19 +1,21 @@
 @import "tailwindcss";
 
 @theme {
-  --color-primary: #0F766E;
-  --color-primary-light: #14B8A6;
-  --color-background-light: #F8FAFC;
+  --color-primary: #2563EB; /* Clinical Blue */
+  --color-primary-light: #3B82F6;
+  --color-secondary: #0F766E; /* Medical Teal */
+
+  --color-background-light: #F6FAFC;
   --color-surface-light: #FFFFFF;
-  --color-text-main-light: #0F172A;
+  --color-text-main-light: #1E293B; /* Deep Navy/Slate */
   --color-text-muted-light: #64748B;
   --color-border-light: #E2E8F0;
-  
-  --color-background-dark: #000000;
-  --color-surface-dark: #1C1C1E;
-  --color-text-main-dark: #FFFFFF;
-  --color-text-muted-dark: #8E8E93;
-  --color-border-dark: #38383A;
+
+  --color-background-dark: #0F172A; /* For dark mode if ever enabled, but mainly light */
+  --color-surface-dark: #1E293B;
+  --color-text-main-dark: #F8FAFC;
+  --color-text-muted-dark: #94A3B8;
+  --color-border-dark: #334155;
 }
 
 @layer base {
@@ -23,22 +25,15 @@
     --text-main: var(--color-text-main-light);
     --text-muted: var(--color-text-muted-light);
     --border: var(--color-border-light);
+    --primary: var(--color-primary);
   }
 
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --background: var(--color-background-dark);
-      --surface: var(--color-surface-dark);
-      --text-main: var(--color-text-main-dark);
-      --text-muted: var(--color-text-muted-dark);
-      --border: var(--color-border-dark);
-    }
-  }
+  /* Se eliminó prefers-color-scheme: dark para forzar el tema clínico claro en toda la app */
 
   html {
     font-size: 16px;
   }
-  
+
   body {
     background-color: var(--background);
     color: var(--text-main);
@@ -49,7 +44,7 @@
   @keyframes slideUpFade {
     from {
       opacity: 0;
-      transform: translateY(20px);
+      transform: translateY(15px);
     }
     to {
       opacity: 1;
@@ -60,30 +55,30 @@
 
 @layer utilities {
   .animate-slide-up {
-    animation: slideUpFade 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    animation: slideUpFade 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     opacity: 0;
   }
-  
+
   .delay-100 { animation-delay: 100ms; }
   .delay-200 { animation-delay: 200ms; }
   .delay-300 { animation-delay: 300ms; }
-  
+
   .glass {
-    background: color-mix(in srgb, var(--surface) 70%, transparent);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border-top: 1px solid color-mix(in srgb, currentColor 10%, transparent);
+    background: color-mix(in srgb, var(--surface) 85%, transparent);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
   }
 }
 
 @layer components {
   .btn-primary {
-    @apply flex items-center justify-center gap-2 w-full px-6 py-4 rounded-full font-semibold transition-transform active:scale-95;
-    background-color: var(--text-main);
-    color: var(--background);
+    @apply flex items-center justify-center gap-2 w-full px-6 py-3.5 rounded-xl font-medium transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow;
+    background-color: var(--primary);
+    color: #FFFFFF;
   }
-  
+
   .input-base {
-    @apply w-full px-6 py-4 rounded-full border border-[var(--border)] bg-[var(--surface)] text-[var(--text-main)] transition-all outline-none focus:ring-2 focus:ring-[var(--text-main)] shadow-inner;
+    @apply w-full px-4 py-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] text-[var(--text-main)] transition-all outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent shadow-sm disabled:opacity-60 disabled:bg-gray-50;
   }
 }
