@@ -2,20 +2,15 @@ import express, { Express, Request, Response } from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import helmet from 'helmet';
+import { env } from './config/env';
+import { createApp } from './app/app';
 
-dotenv.config();
+const startServer = () => {
+  const app = createApp();
 
-const app: Express = express();
-const port = process.env.PORT || 3000;
+  app.listen(env.PORT, () => {
+    console.log(`🚀 Server running in ${env.NODE_ENV} mode on port ${env.PORT}`);
+  });
+};
 
-app.use(cors());
-app.use(helmet());
-app.use(express.json());
-
-app.get('/api/health', (req: Request, res: Response) => {
-  res.json({ status: 'ok', message: 'Backend is running' });
-});
-
-app.listen(port, () => {
-  console.log(`[server]: Server is running at http://localhost:${port}`);
-});
+startServer();

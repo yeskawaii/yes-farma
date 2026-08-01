@@ -7,69 +7,129 @@ datasource db {
   provider = "postgresql"
 }
 
-enum Role {
-  ADMIN
-  DOCTOR
-  RECEPTIONIST
+enum UserStatus {
+  ACTIVE
+  DISABLED
 }
 
-enum AppointmentStatus {
-  SCHEDULED
-  COMPLETED
-  CANCELLED
-  NO_SHOW
+enum ClinicStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum MembershipRole {
+  OWNER
+  PROFESSIONAL
+  ASSISTANT
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INVITED
+  SUSPENDED
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String
-  firstName String
-  lastName  String
-  role      Role     @default(DOCTOR)
-  isActive  Boolean  @default(true)
-  
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String     @id @default(uuid()) @db.Uuid
+  email        String     @unique
+  passwordHash String
+  firstName    String
+  lastName     String
+  status       UserStatus @default(ACTIVE)
+  lastLoginAt  DateTime?
 
-  // Relaciones
-  appointments Appointment[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  memberships  Membership[]
+  sessions     Session[]
+  auditEvents  AuditEvent[]
 }
 
-model Patient {
-  id          String   @id @default(uuid())
-  firstName   String
-  lastName    String
-  email       String?  @unique
-  phone       String?
-  dateOfBirth DateTime
-  gender      String?
-  address     String?
-  bloodType   String?
-  allergies   String?
-  notes       String?
-  
+model Clinic {
+  id        String       @id @default(uuid()) @db.Uuid
+  name      String
+  timezone  String       @default("America/Mexico_City")
+  status    ClinicStatus @default(ACTIVE)
+
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  memberships    Membership[]
+  activeSessions Session[]
+  auditEvents    AuditEvent[]
+}
+
+model Membership {
+  id        String           @id @default(uuid()) @db.Uuid
+  userId    String           @db.Uuid
+  clinicId  String           @db.Uuid
+  role      MembershipRole
+  status    MembershipStatus @default(ACTIVE)
+
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  user      User             @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  clinic    Clinic           @relation(fields: [clinicId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  profile   ProfessionalProfile?
+
+  @@unique([userId, clinicId])
+  @@index([userId])
+  @@index([clinicId])
+}
+
+model ProfessionalProfile {
+  id                  String     @id @default(uuid()) @db.Uuid
+  membershipId        String     @unique @db.Uuid
+  specialtyCode       String
+  professionalLicense String?
+  active              Boolean    @default(true)
+
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  membership          Membership @relation(fields: [membershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+}
+
+model Session {
+  id             String    @id @default(uuid()) @db.Uuid
+  userId         String    @db.Uuid
+  activeClinicId String?   @db.Uuid
+  tokenHash      String    @unique
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  lastSeenAt     DateTime  @default(now())
+  ipAddress      String?
+  userAgent      String?
+
+  createdAt      DateTime  @default(now())
+
+  user           User      @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  activeClinic   Clinic?   @relation(fields: [activeClinicId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([activeClinicId])
+}
+
+model AuditEvent {
+  id          String   @id @default(uuid()) @db.Uuid
+  clinicId    String?  @db.Uuid
+  actorUserId String?  @db.Uuid
+  action      String
+  entityType  String
+  entityId    String?
+  success     Boolean  @default(true)
+  metadata    Json?
+  ipAddress   String?
+  userAgent   String?
+
   createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
 
-  // Relaciones
-  appointments Appointment[]
-}
+  clinic      Clinic?  @relation(fields: [clinicId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  actorUser   User?    @relation(fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
-model Appointment {
-  id        String   @id @default(uuid())
-  dateTime  DateTime
-  status    AppointmentStatus @default(SCHEDULED)
-  reason    String?
-  notes     String?
-  
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relaciones
-  doctorId  String
-  doctor    User     @relation(fields: [doctorId], references: [id])
-  
-  patientId String
-  patient   Patient  @relation(fields: [patientId], references: [id])
+  @@index([clinicId])
+  @@index([actorUserId])
 }
