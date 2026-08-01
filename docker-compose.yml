@@ -14,42 +14,29 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks:
-      - proxy-network
+      - app-network
 
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
     container_name: yes-farma-backend
     restart: unless-stopped
-    ports:
-      - "3001:3000"
     env_file:
       - ./backend/.env
-    environment:
-      - PORT=3000
     depends_on:
       db:
         condition: service_healthy
-    volumes:
-      - ./backend/src:/usr/src/app/src
     networks:
-      - proxy-network
+      - app-network
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
     container_name: yes-farma-frontend
     restart: unless-stopped
     depends_on:
       - backend
     networks:
-      - proxy-network
+      - app-network
 
 volumes:
   pgdata:
 
 networks:
-  proxy-network:
-    external: true
+  app-network:

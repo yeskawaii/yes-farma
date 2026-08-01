@@ -1,0 +1,20 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      target: production
+    networks:
+      - app-network
+      - proxy-network
+
+  frontend:
+    build:
+      context: ./frontend
+      target: production
+    networks:
+      - app-network
+      - proxy-network
+
+networks:
+  proxy-network:
+    external: true

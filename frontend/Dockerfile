@@ -1,21 +1,20 @@
-# Etapa 1: Construcción (Build)
-FROM node:22-alpine AS builder
-
+FROM node:22-alpine AS development
 WORKDIR /usr/src/app
-
 COPY package*.json ./
-RUN npm install
+RUN npm ci
+COPY . .
+EXPOSE 5173
+CMD ["npm", "run", "dev", "--", "--host"]
 
+FROM node:22-alpine AS build
+WORKDIR /usr/src/app
+COPY package*.json ./
+RUN npm ci
 COPY . .
 RUN npm run build
 
-# Etapa 2: Servir con Nginx
-FROM nginx:alpine
-
-# Copiar el build del frontend a la carpeta de nginx
-COPY --from=builder /usr/src/app/dist /usr/share/nginx/html
-
-# Copiar configuración custom si es necesaria, por ahora la default sirve
+FROM nginx:alpine AS production
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /usr/src/app/dist /usr/share/nginx/html
 EXPOSE 80
-
 CMD ["nginx", "-g", "daemon off;"]

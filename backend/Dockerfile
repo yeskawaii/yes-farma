@@ -1,23 +1,29 @@
-FROM node:22-alpine
-
+FROM node:22-alpine AS development
 WORKDIR /usr/src/app
-
-# Copiar configuración de dependencias
 COPY package*.json ./
 COPY prisma ./prisma/
-
-# Instalar dependencias
-RUN npm install
-
-# Copiar código fuente
+RUN npm ci
 COPY . .
-
-# Generar cliente de Prisma
 RUN npx prisma generate
-
-# Exponer puerto
 EXPOSE 3000
+CMD ["sh", "-c", "npx prisma generate && npm run dev"]
 
-# Comando para desarrollo. 
-# En producción sería: CMD ["npm", "run", "start"]
-CMD ["npx", "nodemon", "src/index.ts"]
+FROM node:22-alpine AS build
+WORKDIR /usr/src/app
+COPY package*.json ./
+COPY prisma ./prisma/
+RUN npm ci
+COPY . .
+RUN npx prisma generate
+RUN npm run build
+
+FROM node:22-alpine AS production
+WORKDIR /usr/src/app
+COPY package*.json ./
+COPY prisma ./prisma/
+RUN npm ci --omit=dev
+COPY --from=build /usr/src/app/dist ./dist
+COPY --from=build /usr/src/app/src/generated/prisma ./dist/generated/prisma
+COPY --from=build /usr/src/app/src/generated/prisma ./src/generated/prisma
+EXPOSE 3000
+CMD ["npm", "run", "start"]

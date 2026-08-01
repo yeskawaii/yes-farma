@@ -1,0 +1,23 @@
+services:
+  backend:
+    image: yes-farma-backend:dev
+    build:
+      context: ./backend
+      target: development
+    volumes:
+      - ./backend:/usr/src/app
+      - /usr/src/app/node_modules
+      - /usr/src/app/src/generated/prisma
+    ports:
+      - "3000:3000"
+
+  frontend:
+    image: yes-farma-frontend:dev
+    build:
+      context: ./frontend
+      target: development
+    volumes:
+      - ./frontend:/usr/src/app
+      - /usr/src/app/node_modules
+    ports:
+      - "5173:5173"
