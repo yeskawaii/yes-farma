@@ -6,8 +6,17 @@ Este documento registra cronológicamente los hitos arquitectónicos y de sistem
 
 ### Agosto 2026
 
-- **Documentación de Continuidad Operativa (Actual)**
-  *Commit: 78d3ce0 (previo a rama docs)*
+- **Despliegue Productivo Operativo (Autenticación Multi-tenant)**
+  *Commit: d15e0b9*
+  - Despliegue seguro a producción en DigitalOcean completado.
+  - Aplicación estricta de la migración inicial (`npx prisma migrate deploy`).
+  - Creación controlada del usuario propietario y tenant inicial directamente compilado (`node dist/scripts/bootstrap-owner.js`).
+  - Resolución de colisión DNS ajustando el _hostname_ productivo de base de datos a `yes-farma-db` en lugar del genérico `db`.
+  - Corrección estructural del contenedor añadiendo `prisma.config.ts` explícito en la imagen de producción.
+  - Validación completa del flujo _end-to-end_ HTTPS (login, sesiones, API health).
+
+- **Documentación de Continuidad Operativa**
+  *Commit: 78d3ce0 (y commits subsiguientes en docs)*
   - Creación de estándares de continuidad en AI (`AI_HANDOFF.md`, runbooks, contextos) permitiendo independencia de entornos y desarrolladores.
 
 - **Diseño Clínico Limpio (Frontend UI)**

@@ -5,25 +5,26 @@
 Este documento permite continuar el desarrollo del proyecto Yes Farma de forma segura desde cualquier chat nuevo, herramienta de IA o entorno, preservando el contexto y la continuidad operativa.
 
 ## Propósito
-Yes Farma es una plataforma clínica SaaS en evolución, inicialmente diseñada para un consultorio odontológico. El repositorio actual contiene la base fundacional de autenticación, diseño de interfaz y arquitectura Docker.
+Yes Farma es una plataforma clínica SaaS en evolución, inicialmente diseñada para un consultorio odontológico. El repositorio actual contiene la base fundacional de autenticación, diseño de interfaz y arquitectura Docker ya **completamente desplegada en producción**.
 
 ## Estado Resumido
-El proyecto tiene un frontend React (Vite) con diseño clínico claro, un backend Node.js (Express, TypeScript) con sesiones opacas persistidas en PostgreSQL (Prisma 7), y una infraestructura Dockerizada para desarrollo y producción separadas. **Aún no** se implementan módulos operativos como pacientes o agenda. La autenticación está terminada.
+El proyecto tiene un frontend React (Vite) con diseño clínico claro, un backend Node.js (Express, TypeScript) con sesiones opacas persistidas en PostgreSQL (Prisma 7), y una infraestructura Dockerizada para desarrollo y producción separadas. **El despliegue a producción ya se realizó correctamente, la migración fue aplicada y el propietario fue creado.** El siguiente objetivo funcional es el módulo de pacientes.
 
 ## Arquitectura
-- **Frontend:** React, TypeScript, Vite, Tailwind CSS (diseño clínico, no oscuro), React Router, PWA.
+- **Frontend:** React, TypeScript, Vite, Tailwind CSS, React Router, PWA. Peticiones de API gestionadas con `fetch` y validación de `credentials: include`.
 - **Backend:** Node.js 22, Express 5, TypeScript, Prisma 7 (con `@prisma/adapter-pg`), PostgreSQL 15, Zod.
 - **Autenticación:** Sesiones opacas almacenadas en la base de datos (cookie `HttpOnly`). Contraseñas con `scrypt` asíncrono y hash en constante tiempo (no JWT, no bcrypt).
 - **Modelo Tenant:** `Clinic` -> `Membership` (contiene rol) -> `User`.
 - **Despliegue:** DigitalOcean (Ubuntu), Docker Compose, Nginx Proxy Manager.
+- **Hallazgos Vitales:** El hostname de la BD en producción es estrictamente `yes-farma-db` (evitar `db` genérico). El bootstrap productivo usa Node compilado.
 
 ## Ramas y Commit Estable
 - **Rama Estable:** `main`
-- **Último Commit Estable (Verificado):** `78d3ce0 feat(ui): refresh clinical interface`
-- **Rama Actual (Documentación):** `docs/project-continuity`
+- **Último Commit Estable (Verificado):** `d15e0b9 fix(docker): include Prisma config in production image`
+- **Rama Actual (Documentación):** `docs/update-production-status`
 
 ## Entornos y Comandos de Inicio (Lectura)
-- **Local (Desarrollo):** 
+- **Local (Desarrollo):**
   `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build`
 - **Productivo (Servidor):**
   `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build`
@@ -42,7 +43,7 @@ El proyecto tiene un frontend React (Vite) con diseño clínico claro, un backen
 - Prisma: `npx prisma validate`, `npx prisma migrate status`
 
 ## Siguiente Paso Exacto
-El código de autenticación y rediseño clínico ya fue mezclado en `main`. El **siguiente paso exacto** es realizar un despliegue productivo seguro en DigitalOcean siguiendo los pasos del runbook, y posteriormente iniciar el desarrollo del módulo de Pacientes y Agenda.
+Producción funciona de punta a punta. El **siguiente paso exacto** es diseñar e implementar el módulo de Pacientes en la plataforma.
 
 ## Enlaces a Documentación
 - Contexto de Negocio: [PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md)
