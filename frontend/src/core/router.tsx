@@ -3,6 +3,8 @@ import { MainLayout } from '../shared/components/Layout/MainLayout';
 import { LoginPage } from '../features/auth/LoginPage';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { ProtectedRoute } from './auth/ProtectedRoute';
+import { PatientList } from '../features/patients/PatientList';
+import { PatientDetail } from '../features/patients/PatientDetail';
 
 export const router = createBrowserRouter([
   {
@@ -27,7 +29,11 @@ export const router = createBrowserRouter([
           },
           {
             path: 'patients',
-            element: <div className="p-8"><h2>Módulo de Pacientes (Próximamente)</h2></div>,
+            element: <PatientList />,
+          },
+          {
+            path: 'patients/:id',
+            element: <PatientDetail />,
           },
           {
             path: 'appointments',
