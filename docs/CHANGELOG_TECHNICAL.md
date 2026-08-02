@@ -6,6 +6,19 @@ Este documento registra cronológicamente los hitos arquitectónicos y de sistem
 
 ### Agosto 2026
 
+- **Módulo de Pacientes**
+  *2 de Agosto de 2026*
+  - modelo y migración;
+  - API multi-tenant;
+  - auditoría;
+  - duplicados;
+  - permisos;
+  - listado y detalle;
+  - creación y edición;
+  - desactivación y reactivación;
+  - 34 pruebas;
+  - validación manual local.
+
 - **Despliegue Productivo Operativo (Autenticación Multi-tenant)**
   *Commit: d15e0b9*
   - Despliegue seguro a producción en DigitalOcean completado.

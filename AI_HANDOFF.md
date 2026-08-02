@@ -8,7 +8,10 @@ Este documento permite continuar el desarrollo del proyecto Yes Farma de forma s
 Yes Farma es una plataforma clínica SaaS en evolución, inicialmente diseñada para un consultorio odontológico. El repositorio actual contiene la base fundacional de autenticación, diseño de interfaz y arquitectura Docker ya **completamente desplegada en producción**.
 
 ## Estado Resumido
-El proyecto tiene un frontend React (Vite) con diseño clínico claro, un backend Node.js (Express, TypeScript) con sesiones opacas persistidas en PostgreSQL (Prisma 7), y una infraestructura Dockerizada para desarrollo y producción separadas. **El despliegue a producción ya se realizó correctamente, la migración fue aplicada y el propietario fue creado.** El siguiente objetivo funcional es el módulo de pacientes.
+El proyecto tiene un frontend React (Vite) con diseño clínico claro, un backend Node.js (Express, TypeScript) con sesiones opacas persistidas en PostgreSQL (Prisma 7), y una infraestructura Dockerizada para desarrollo y producción separadas. **El despliegue a producción ya se realizó correctamente, la migración inicial fue aplicada y el propietario fue creado.**
+El módulo de Pacientes está completo en local, con su migración creada y probada. Cuenta con 34 pruebas backend aprobadas y frontend validado manualmente. Su despliegue productivo está pendiente.
+El siguiente paso inmediato es integrar a main y ejecutar el despliegue controlado de este módulo.
+El siguiente módulo funcional después del despliegue será la Agenda de Citas.
 
 ## Arquitectura
 - **Frontend:** React, TypeScript, Vite, Tailwind CSS, React Router, PWA. Peticiones de API gestionadas con `fetch` y validación de `credentials: include`.
@@ -43,7 +46,7 @@ El proyecto tiene un frontend React (Vite) con diseño clínico claro, un backen
 - Prisma: `npx prisma validate`, `npx prisma migrate status`
 
 ## Siguiente Paso Exacto
-Producción funciona de punta a punta. El **siguiente paso exacto** es diseñar e implementar el módulo de Pacientes en la plataforma.
+Producción funciona de punta a punta. El **siguiente paso exacto** es integrar el módulo de Pacientes a main y ejecutar un despliegue controlado a producción, seguido del inicio del desarrollo del módulo funcional Agenda de Citas.
 
 ## Enlaces a Documentación
 - Contexto de Negocio: [PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md)
