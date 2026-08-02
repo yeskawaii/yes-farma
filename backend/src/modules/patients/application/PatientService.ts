@@ -275,4 +275,50 @@ export class PatientService {
 
     return patient;
   }
+
+  async reactivatePatient(clinicId: string, id: string, membershipId: string, actorUserId: string) {
+    const existing = await this.prisma.patient.findFirst({
+      where: { id, clinicId }
+    });
+
+    if (!existing) {
+      throw new AppError('NOT_FOUND', 'Paciente no encontrado.', 404);
+    }
+
+    if (existing.status === 'ACTIVE') {
+      return existing; // idempotent
+    }
+
+    const patient = await this.prisma.$transaction(async (tx) => {
+      const p = await tx.patient.update({
+        where: { id },
+        data: {
+          status: 'ACTIVE',
+          deactivatedAt: null,
+          deactivatedByMembershipId: null,
+          updatedByMembershipId: membershipId
+        }
+      });
+
+      await tx.auditEvent.create({
+        data: {
+          clinicId,
+          actorUserId,
+          action: 'PATIENT_REACTIVATED',
+          entityType: 'Patient',
+          entityId: p.id,
+          success: true,
+          metadata: {
+            patientId: p.id,
+            previousStatus: 'INACTIVE',
+            newStatus: 'ACTIVE'
+          }
+        }
+      });
+
+      return p;
+    });
+
+    return patient;
+  }
 }

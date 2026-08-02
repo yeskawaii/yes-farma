@@ -69,7 +69,7 @@ export class PatientController {
       const ctx = getAuthCtx(req);
       const id = z.string().uuid().parse(req.params.id);
       const input = updatePatientSchema.parse(req.body);
-      
+
       const patient = await patientService.updatePatient(
         ctx.clinicId,
         id,
@@ -90,8 +90,28 @@ export class PatientController {
     try {
       const ctx = getAuthCtx(req);
       const id = z.string().uuid().parse(req.params.id);
-      
+
       const patient = await patientService.deactivatePatient(
+        ctx.clinicId,
+        id,
+        ctx.membershipId,
+        ctx.userId
+      );
+      res.json(patient);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return next(new AppError('VALIDATION_ERROR', 'ID inválido', 400));
+      }
+      next(error);
+    }
+  }
+
+  static async reactivate(req: Request, res: Response, next: NextFunction) {
+    try {
+      const ctx = getAuthCtx(req);
+      const id = z.string().uuid().parse(req.params.id);
+
+      const patient = await patientService.reactivatePatient(
         ctx.clinicId,
         id,
         ctx.membershipId,

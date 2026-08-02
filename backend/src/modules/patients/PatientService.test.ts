@@ -124,12 +124,12 @@ test('10. listado siempre filtra por clinicId', async () => {
 
 // 11. detalle de otro tenant devuelve 404
 test('11. detalle de otro tenant devuelve 404', async () => {
-  const repo = createFakeRepo({ 
-    patient: { 
+  const repo = createFakeRepo({
+    patient: {
       findFirst: async () => null,
       findMany: async () => [],
       count: async () => 0,
-    } 
+    }
   });
   const service = new PatientService(repo);
   await assert.rejects(
@@ -140,12 +140,12 @@ test('11. detalle de otro tenant devuelve 404', async () => {
 
 // 12. actualización de otro tenant devuelve 404
 test('12. actualización de otro tenant devuelve 404', async () => {
-  const repo = createFakeRepo({ 
-    patient: { 
+  const repo = createFakeRepo({
+    patient: {
       findFirst: async () => null,
       findMany: async () => [],
       count: async () => 0,
-    } 
+    }
   });
   const service = new PatientService(repo);
   await assert.rejects(
@@ -180,8 +180,8 @@ test('14. confirmPossibleDuplicate permite continuar', async () => {
     }
   });
   const service = new PatientService(repo);
-  const res = await service.createPatient('c-1', 'm-1', 'u-1', { 
-    firstName: 'Juan', lastName: 'Perez', phone: '123', confirmPossibleDuplicate: true 
+  const res = await service.createPatient('c-1', 'm-1', 'u-1', {
+    firstName: 'Juan', lastName: 'Perez', phone: '123', confirmPossibleDuplicate: true
   });
   assert.strictEqual(res.firstName, 'Juan');
 });
@@ -190,7 +190,7 @@ test('14. confirmPossibleDuplicate permite continuar', async () => {
 test('18. desactivación idempotente', async () => {
   let txCalled = false;
   const repo = createFakeRepo({
-    patient: { 
+    patient: {
       findFirst: async () => ({ status: 'INACTIVE' } as Patient),
       findMany: async () => [],
       count: async () => 0,
@@ -223,7 +223,7 @@ test('19. creación genera AuditEvent', async () => {
 test('20. actualización genera AuditEvent con nombres de campos modificados', async () => {
   let auditData: any = null;
   const repo = createFakeRepo({
-    patient: { 
+    patient: {
       findFirst: async () => ({ id: 'p-1', firstName: 'Old' } as Patient),
       findMany: async () => [],
       count: async () => 0,
@@ -244,7 +244,7 @@ test('21 & 22. desactivación transaccional con AuditEvent', async () => {
   let txCalled = false;
   let auditAction = '';
   const repo = createFakeRepo({
-    patient: { 
+    patient: {
       findFirst: async () => ({ id: 'p-1', status: 'ACTIVE' } as Patient),
       findMany: async () => [],
       count: async () => 0,
@@ -311,6 +311,123 @@ test('26. Una petición sin authContext no obtiene acceso', (t) => {
 test('27. Un rol no permitido no obtiene acceso', (t) => {
   const middleware = requireRoles(['OWNER']);
   const req = createFakeReq('INVALID_ROLE');
+  let error: any = null;
+  middleware(req, {} as Response, (err?: any) => { error = err; });
+  assert.ok(error instanceof AppError);
+  assert.strictEqual(error.statusCode, 403);
+});
+
+// Reactivation Tests
+test('28. Paciente de otra clínica devuelve 404 (reactivación)', async () => {
+  const repo = createFakeRepo({
+    patient: {
+      findFirst: async () => null,
+      findMany: async () => [],
+      count: async () => 0,
+    }
+  });
+  const service = new PatientService(repo);
+  await assert.rejects(
+    () => service.reactivatePatient('clinic-1', 'patient-2', 'mem-1', 'usr-1'),
+    (err: any) => err instanceof AppError && err.statusCode === 404
+  );
+});
+
+test('29. Paciente INACTIVE cambia a ACTIVE, limpia campos y usa transacción/auditoría', async () => {
+  let txCalled = false;
+  let auditAction = '';
+  let updatedFields: any = null;
+
+  const repo = createFakeRepo({
+    patient: {
+      findFirst: async () => ({ id: 'p-1', status: 'INACTIVE', clinicId: 'c-1' } as Patient),
+      findMany: async () => [],
+      count: async () => 0,
+    },
+    $transaction: async (cb: any) => {
+      txCalled = true;
+      return cb({
+        patient: {
+          update: async (args: any) => {
+            updatedFields = args.data;
+            return { id: 'p-1', ...args.data } as Patient;
+          },
+          create: async (args: any) => args.data as Patient
+        },
+        auditEvent: {
+          create: async (args: any) => {
+            auditAction = args.data.action;
+            return args.data;
+          }
+        }
+      });
+    }
+  });
+
+  const service = new PatientService(repo);
+  const res = await service.reactivatePatient('c-1', 'p-1', 'mem-1', 'usr-1');
+
+  // 5. Paciente INACTIVE cambia a ACTIVE
+  assert.strictEqual(res.status, 'ACTIVE');
+  // 6. deactivatedAt queda null
+  assert.strictEqual(updatedFields.deactivatedAt, null);
+  // 7. deactivatedByMembershipId queda null
+  assert.strictEqual(updatedFields.deactivatedByMembershipId, null);
+  // 8. updatedByMembershipId usa la membresía autenticada
+  assert.strictEqual(updatedFields.updatedByMembershipId, 'mem-1');
+  // 9. Se genera PATIENT_REACTIVATED
+  assert.strictEqual(auditAction, 'PATIENT_REACTIVATED');
+  // 10. Reactivación y auditoría usan la misma transacción
+  assert.strictEqual(txCalled, true);
+});
+
+test('30. Reactivar un paciente ya ACTIVE es idempotente', async () => {
+  let txCalled = false;
+  const repo = createFakeRepo({
+    patient: {
+      findFirst: async () => ({ id: 'p-1', status: 'ACTIVE', clinicId: 'c-1' } as Patient),
+      findMany: async () => [],
+      count: async () => 0,
+    },
+    $transaction: async () => {
+      txCalled = true;
+      return {} as any;
+    }
+  });
+  const service = new PatientService(repo);
+  const res = await service.reactivatePatient('c-1', 'p-1', 'mem-1', 'usr-1');
+
+  // 11. Reactivar un paciente ya ACTIVE es idempotente.
+  assert.strictEqual(res.status, 'ACTIVE');
+  // 12. La reactivación idempotente no genera un segundo AuditEvent (ni entra a transacción).
+  assert.strictEqual(txCalled, false);
+});
+
+test('31. OWNER puede superar el middleware para reactivar', (t) => {
+  const middleware = requireRoles(['OWNER', 'PROFESSIONAL']);
+  const req = createFakeReq('OWNER');
+  let called = false;
+  middleware(req, {} as Response, (err?: any) => {
+    assert.strictEqual(err, undefined);
+    called = true;
+  });
+  assert.strictEqual(called, true);
+});
+
+test('32. PROFESSIONAL puede superar el middleware para reactivar', (t) => {
+  const middleware = requireRoles(['OWNER', 'PROFESSIONAL']);
+  const req = createFakeReq('PROFESSIONAL');
+  let called = false;
+  middleware(req, {} as Response, (err?: any) => {
+    assert.strictEqual(err, undefined);
+    called = true;
+  });
+  assert.strictEqual(called, true);
+});
+
+test('33. ASSISTANT recibe 403 al intentar reactivar', (t) => {
+  const middleware = requireRoles(['OWNER', 'PROFESSIONAL']);
+  const req = createFakeReq('ASSISTANT');
   let error: any = null;
   middleware(req, {} as Response, (err?: any) => { error = err; });
   assert.ok(error instanceof AppError);
