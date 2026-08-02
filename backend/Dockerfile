@@ -21,6 +21,7 @@ FROM node:22-alpine AS production
 WORKDIR /usr/src/app
 COPY package*.json ./
 COPY prisma ./prisma/
+COPY prisma.config.ts ./prisma.config.ts
 RUN npm ci --omit=dev
 COPY --from=build /usr/src/app/dist ./dist
 COPY --from=build /usr/src/app/src/generated/prisma ./dist/generated/prisma
