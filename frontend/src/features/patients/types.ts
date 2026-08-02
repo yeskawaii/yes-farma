@@ -42,7 +42,18 @@ export interface PatientsFilters {
   pageSize: number;
 }
 
-// Error handling for possible duplicate if the backend implements it in the future
+export interface PatientFormInput {
+  firstName: string;
+  lastName: string;
+  secondLastName?: string;
+  birthDate?: string;
+  sexAtBirth?: 'FEMALE' | 'MALE' | 'INTERSEX' | 'UNKNOWN' | '';
+  phone?: string;
+  email?: string;
+  administrativeNotes?: string;
+  confirmPossibleDuplicate?: boolean;
+}
+
 export interface ApiError {
   code?: string;
   message: string;

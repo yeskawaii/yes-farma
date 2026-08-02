@@ -30,8 +30,8 @@ export function PatientList() {
         pageSize
       });
       setData(res);
-    } catch (err: any) {
-      setError(err.message || 'Ocurrió un error al cargar los pacientes.');
+    } catch (err: unknown) {
+      setError('Ocurrió un error al cargar los pacientes.');
     } finally {
       setLoading(false);
     }
@@ -83,9 +83,8 @@ export function PatientList() {
           <p className="text-slate-500 mt-1">Gestiona el directorio de pacientes de la clínica.</p>
         </div>
         <button 
-          className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-sm w-full md:w-auto disabled:opacity-50"
-          disabled
-          title="Próximamente"
+          onClick={() => navigate('/patients/new')}
+          className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-sm w-full md:w-auto"
         >
           <Plus size={18} />
           <span>Nuevo Paciente</span>

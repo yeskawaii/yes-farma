@@ -5,6 +5,8 @@ import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { ProtectedRoute } from './auth/ProtectedRoute';
 import { PatientList } from '../features/patients/PatientList';
 import { PatientDetail } from '../features/patients/PatientDetail';
+import { PatientCreate } from '../features/patients/PatientCreate';
+import { PatientEdit } from '../features/patients/PatientEdit';
 
 export const router = createBrowserRouter([
   {
@@ -32,8 +34,16 @@ export const router = createBrowserRouter([
             element: <PatientList />,
           },
           {
+            path: 'patients/new',
+            element: <PatientCreate />,
+          },
+          {
             path: 'patients/:id',
             element: <PatientDetail />,
+          },
+          {
+            path: 'patients/:id/edit',
+            element: <PatientEdit />,
           },
           {
             path: 'appointments',

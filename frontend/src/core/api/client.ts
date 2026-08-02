@@ -64,4 +64,13 @@ export const apiClient = {
     });
     return handleResponse(res);
   },
+  async patch<T>(url: string, body?: unknown): Promise<T> {
+    const res = await fetch(`/api${url}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined,
+      credentials: 'include',
+    });
+    return handleResponse(res);
+  },
 };
