@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { env } from '../config/env';
 import { authRoutes } from '../modules/identity/http/authRoutes';
+import { patientRoutes } from '../modules/patients/infrastructure/patientRoutes';
 import { errorHandler } from '../shared/errors/errorHandler';
 
 export const createApp = () => {
@@ -28,6 +29,7 @@ export const createApp = () => {
 
   // Routes
   app.use('/api/auth', authRoutes);
+  app.use('/api/patients', patientRoutes);
 
   // Global Error Handler
   app.use(errorHandler);
