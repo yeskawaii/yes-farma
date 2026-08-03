@@ -34,6 +34,15 @@ enum PatientStatus {
   INACTIVE
 }
 
+enum AppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
 enum SexAtBirth {
   FEMALE
   MALE
@@ -61,7 +70,7 @@ model User {
 model Clinic {
   id        String       @id @default(uuid()) @db.Uuid
   name      String
-  timezone  String       @default("America/Mexico_City")
+  timeZone  String       @default("America/Mexico_City") @map("timezone")
   status    ClinicStatus @default(ACTIVE)
 
   createdAt DateTime     @default(now())
@@ -71,6 +80,7 @@ model Clinic {
   activeSessions Session[]
   auditEvents    AuditEvent[]
   patients       Patient[]
+  appointments   Appointment[]
 }
 
 model Membership {
@@ -90,6 +100,11 @@ model Membership {
   createdPatients     Patient[] @relation("PatientCreatedBy")
   updatedPatients     Patient[] @relation("PatientUpdatedBy")
   deactivatedPatients Patient[] @relation("PatientDeactivatedBy")
+
+  appointmentsAsProfessional Appointment[] @relation("AppointmentProfessional")
+  createdAppointments        Appointment[] @relation("AppointmentCreatedBy")
+  updatedAppointments        Appointment[] @relation("AppointmentUpdatedBy")
+  cancelledAppointments      Appointment[] @relation("AppointmentCancelledBy")
 
   @@unique([userId, clinicId])
   @@index([userId])
@@ -176,9 +191,45 @@ model Patient {
   updatedBy                 Membership    @relation("PatientUpdatedBy", fields: [updatedByMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   deactivatedBy             Membership?   @relation("PatientDeactivatedBy", fields: [deactivatedByMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
+  appointments              Appointment[]
+
   @@index([clinicId, status])
   @@index([clinicId, lastName, firstName])
   @@index([clinicId, phone])
   @@index([clinicId, email])
   @@index([clinicId, updatedAt])
+}
+
+model Appointment {
+  id                         String            @id @default(uuid()) @db.Uuid
+  clinicId                   String            @db.Uuid
+  patientId                  String            @db.Uuid
+  professionalMembershipId   String            @db.Uuid
+  startAt                    DateTime          @db.Timestamptz(3)
+  endAt                      DateTime          @db.Timestamptz(3)
+  status                     AppointmentStatus @default(SCHEDULED)
+  reason                     String?
+  administrativeNotes        String?
+
+  createdAt                  DateTime          @default(now())
+  updatedAt                  DateTime          @updatedAt
+  createdByMembershipId      String            @db.Uuid
+  updatedByMembershipId      String            @db.Uuid
+  cancelledAt                DateTime?         @db.Timestamptz(3)
+  cancelledByMembershipId    String?           @db.Uuid
+  cancellationReason         String?
+
+  clinic                     Clinic            @relation(fields: [clinicId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  patient                    Patient           @relation(fields: [patientId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  professional               Membership        @relation("AppointmentProfessional", fields: [professionalMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  createdBy                  Membership        @relation("AppointmentCreatedBy", fields: [createdByMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  updatedBy                  Membership        @relation("AppointmentUpdatedBy", fields: [updatedByMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  cancelledBy                Membership?       @relation("AppointmentCancelledBy", fields: [cancelledByMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([clinicId, startAt])
+  @@index([clinicId, endAt])
+  @@index([clinicId, status, startAt])
+  @@index([clinicId, professionalMembershipId, startAt])
+  @@index([clinicId, patientId, startAt])
+  @@index([professionalMembershipId, startAt, endAt])
 }
