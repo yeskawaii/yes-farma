@@ -6,6 +6,15 @@ Este documento registra cronológicamente los hitos arquitectónicos y de sistem
 
 ### Agosto 2026
 
+- **Cierre Productivo del Módulo de Pacientes**
+  *Commit desplegado: 931563a*
+  - respaldo previo;
+  - migración aplicada;
+  - despliegue de backend y frontend;
+  - validación del health;
+  - prueba completa del flujo;
+  - confirmación de desactivación y reactivación.
+
 - **Módulo de Pacientes**
   *2 de Agosto de 2026*
   - modelo y migración;
