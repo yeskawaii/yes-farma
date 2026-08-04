@@ -30,6 +30,9 @@ export interface IAppointmentRepository {
     findMany(args: Prisma.AppointmentFindManyArgs): Promise<Appointment[]>;
     findFirst(args: Prisma.AppointmentFindFirstArgs): Promise<Appointment | null>;
   };
+  membership: {
+    findMany(args: Prisma.MembershipFindManyArgs): Promise<any>;
+  };
   $transaction<T>(callback: (tx: IPrismaTxAppointment) => Promise<T>, options?: { isolationLevel?: Prisma.TransactionIsolationLevel }): Promise<T>;
 }
 
@@ -41,6 +44,33 @@ export class AppointmentService {
     if (str === null) return null;
     const clean = str.trim();
     return clean === '' ? null : clean;
+  }
+
+  async listProfessionals(clinicId: string) {
+    const items = await this.prisma.membership.findMany({
+      where: {
+        clinicId,
+        status: 'ACTIVE',
+        role: { in: ['OWNER', 'PROFESSIONAL'] }
+      },
+      select: {
+        id: true,
+        role: true,
+        user: {
+          select: {
+            firstName: true,
+            lastName: true
+          }
+        }
+      },
+      orderBy: [
+        { user: { firstName: 'asc' } },
+        { user: { lastName: 'asc' } },
+        { id: 'asc' }
+      ]
+    });
+
+    return items;
   }
 
   async listAppointments(clinicId: string, input: ListAppointmentsInput) {

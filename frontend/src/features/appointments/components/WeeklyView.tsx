@@ -51,6 +51,7 @@ export function WeeklyView({ startDate, appointments, onSelectAppointment }: Wee
                         appointment={app}
                         onClick={onSelectAppointment}
                         className="shadow-sm"
+                        compact
                       />
                     ))
                   )}

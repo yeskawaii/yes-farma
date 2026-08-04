@@ -35,6 +35,16 @@ export class AppointmentController {
     }
   }
 
+  static async listProfessionals(req: Request, res: Response, next: NextFunction) {
+    try {
+      const ctx = getAuthCtx(req);
+      const result = await appointmentService.listProfessionals(ctx.clinicId);
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async getById(req: Request, res: Response, next: NextFunction) {
     try {
       const ctx = getAuthCtx(req);

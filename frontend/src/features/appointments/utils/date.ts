@@ -8,14 +8,15 @@ const createFormatter = (options: Intl.DateTimeFormatOptions) => {
   return new Intl.DateTimeFormat('es-MX', { ...options, timeZone: CLINIC_TIME_ZONE });
 };
 
-// Convierte un objeto Date o ISO string a YYYY-MM-DD en la zona clínica
 export function getCivilDate(dateOrIso?: Date | string): CivilDate {
   const date = dateOrIso ? new Date(dateOrIso) : new Date();
   const formatter = createFormatter({ year: 'numeric', month: '2-digit', day: '2-digit' });
-  // El formato devuelto suele ser DD/MM/YYYY, así que lo parseamos
   const parts = formatter.formatToParts(date);
   const getPart = (type: string) => parts.find(p => p.type === type)?.value;
-  return `${getPart('year')}-${getPart('month')}-${getPart('day')}`;
+  const y = getPart('year');
+  const m = getPart('month')?.padStart(2, '0');
+  const d = getPart('day')?.padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 // Devuelve el Date exacto que representa la medianoche de una fecha civil en la zona clínica
@@ -100,4 +101,63 @@ export function formatShortDateCivil(civilDate: CivilDate): string {
   const d = civilDateToUtcMidnight(civilDate);
   d.setUTCHours(12); // Para formatear sin riesgo
   return createFormatter({ weekday: 'short', day: 'numeric' }).format(d);
+}
+
+export function civilDateAndTimeToIso(civilDate: CivilDate, time: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(civilDate)) {
+    throw new Error('Formato de fecha inválido. Se esperaba YYYY-MM-DD');
+  }
+  if (!/^\d{2}:\d{2}$/.test(time)) {
+    throw new Error('Formato de hora inválido. Se esperaba HH:mm');
+  }
+
+  const [year, month, day] = civilDate.split('-').map(Number);
+  const [hours, minutes] = time.split(':').map(Number);
+
+  if (month < 1 || month > 12 || day < 1 || day > 31) {
+    throw new Error('Fecha fuera de rango');
+  }
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+    throw new Error('Hora fuera de rango');
+  }
+
+  const testDate = new Date(year, month - 1, day);
+  if (testDate.getFullYear() !== year || testDate.getMonth() !== month - 1 || testDate.getDate() !== day) {
+    throw new Error('La fecha especificada no existe en el calendario');
+  }
+
+  // Buscar el offset correcto a partir del aproximado (-6 horas)
+  const d = new Date(Date.UTC(year, month - 1, day, hours, minutes, 0, 0));
+  d.setUTCHours(d.getUTCHours() + 6); // America/Mexico_City suele ser UTC-6
+
+  for (let i = -3; i <= 3; i++) {
+    const candidate = new Date(d.getTime() + i * 3600000);
+    const parts = createFormatter({
+      year: 'numeric', month: 'numeric', day: 'numeric',
+      hour: 'numeric', minute: 'numeric', hourCycle: 'h23'
+    }).formatToParts(candidate);
+
+    const getPart = (type: string) => parts.find(p => p.type === type)?.value || '0';
+    const cYear = parseInt(getPart('year'), 10);
+    const cMonth = parseInt(getPart('month'), 10);
+    const cDay = parseInt(getPart('day'), 10);
+    const cHour = parseInt(getPart('hour'), 10);
+    const cMin = parseInt(getPart('minute'), 10);
+
+    if (cYear === year && cMonth === month && cDay === day && cHour === hours && cMin === minutes) {
+      return candidate.toISOString();
+    }
+  }
+
+  throw new Error('No fue posible mapear la fecha y hora a la zona clínica');
+}
+
+// Extrae HH:mm de un ISO en la zona de la clínica
+export function getClinicTime(isoDate: string): string {
+  return formatTime(isoDate);
+}
+
+// Devuelve la fecha civil (YYYY-MM-DD) de un ISO en la zona de la clínica
+export function getClinicCivilDate(isoDate: string): CivilDate {
+  return getCivilDate(isoDate);
 }

@@ -6,6 +6,7 @@ interface AppointmentCardProps {
   appointment: AppointmentListItem;
   onClick: (id: string) => void;
   className?: string;
+  compact?: boolean;
 }
 
 const statusMap: Record<AppointmentStatus, { label: string, color: string, dot: string }> = {
@@ -17,24 +18,36 @@ const statusMap: Record<AppointmentStatus, { label: string, color: string, dot: 
   NO_SHOW: { label: 'No asistió', color: 'bg-slate-50 border-slate-200 hover:border-slate-300 opacity-60', dot: 'bg-slate-400' }
 };
 
-export function AppointmentCard({ appointment, onClick, className = '' }: AppointmentCardProps) {
+export function AppointmentCard({ appointment, onClick, className = '', compact = false }: AppointmentCardProps) {
   const { color, dot, label } = statusMap[appointment.status];
 
   return (
     <button
       type="button"
       onClick={() => onClick(appointment.id)}
-      className={`border rounded-lg p-3 text-left cursor-pointer transition-all active:scale-[0.98] ${color} ${className} w-full focus:outline-none focus:ring-2 focus:ring-blue-500`}
+      className={`border rounded-lg p-3 text-left cursor-pointer transition-all active:scale-[0.98] ${color} ${className} w-full focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-0 max-w-full overflow-hidden whitespace-normal break-normal`}
       aria-label={`Cita ${label} de ${formatTime(appointment.startAt)} a ${formatTime(appointment.endAt)}`}
     >
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-1.5 text-slate-600 font-medium text-xs">
-          <Clock size={14} />
-          <span>{formatTime(appointment.startAt)} - {formatTime(appointment.endAt)}</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className={`w-2 h-2 rounded-full ${dot}`}></div>
-          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{label}</span>
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 mb-2">
+        {compact ? (
+          <div className="flex flex-col text-slate-600 font-medium text-xs min-w-0 shrink-0 leading-tight">
+            <div className="flex items-center gap-1.5 whitespace-nowrap">
+              <Clock size={14} className="shrink-0" />
+              <span>{formatTime(appointment.startAt)}</span>
+            </div>
+            <div className="pl-[20px] whitespace-nowrap">
+              <span>- {formatTime(appointment.endAt)}</span>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 text-slate-600 font-medium text-xs whitespace-nowrap shrink-0">
+            <Clock size={14} className="shrink-0" />
+            <span>{formatTime(appointment.startAt)} - {formatTime(appointment.endAt)}</span>
+          </div>
+        )}
+        <div className="flex items-center gap-1.5 min-w-0">
+          <div className={`w-2 h-2 rounded-full shrink-0 ${dot}`}></div>
+          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider whitespace-normal text-left break-words">{label}</span>
         </div>
       </div>
 

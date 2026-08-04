@@ -15,12 +15,16 @@ import type { CivilDate } from './utils/date';
 import { DailyView } from './components/DailyView';
 import { WeeklyView } from './components/WeeklyView';
 import { AppointmentDetailModal } from './components/AppointmentDetailModal';
+import { AppointmentFormModal } from './components/AppointmentFormModal';
+import { useAuth } from '../../core/auth/AuthProvider';
 
 type ViewMode = 'daily' | 'weekly';
 
 export function AppointmentsPage() {
+  const { activeRole } = useAuth();
   const [viewMode, setViewMode] = useState<ViewMode>('daily');
   const [currentDate, setCurrentDate] = useState<CivilDate>(getCivilDate());
+  const [isFormOpen, setIsFormOpen] = useState(false);
 
   const [appointments, setAppointments] = useState<AppointmentListItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,6 +83,14 @@ export function AppointmentsPage() {
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">Agenda</h1>
           <p className="text-slate-500 mt-1">Gestiona las citas programadas en la clínica.</p>
         </div>
+        {['OWNER', 'ASSISTANT', 'PROFESSIONAL'].includes(activeRole || '') && (
+          <button
+            onClick={() => setIsFormOpen(true)}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Nueva cita
+          </button>
+        )}
       </div>
 
       {/* Toolbar */}
@@ -178,8 +190,17 @@ export function AppointmentsPage() {
         <AppointmentDetailModal
           id={selectedAppointmentId}
           onClose={() => setSelectedAppointmentId(null)}
+          onSuccess={fetchAppointments}
         />
       )}
+
+      {/* Form Modal */}
+      <AppointmentFormModal
+        isOpen={isFormOpen}
+        onClose={() => setIsFormOpen(false)}
+        onSuccess={fetchAppointments}
+        initialDate={currentDate}
+      />
     </div>
   );
 }

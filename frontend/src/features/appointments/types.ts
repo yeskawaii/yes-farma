@@ -1,5 +1,39 @@
 export type AppointmentStatus = 'SCHEDULED' | 'CONFIRMED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
 
+export interface AppointmentProfessionalOption {
+  id: string;
+  role: string;
+  user: {
+    firstName: string;
+    lastName: string;
+  };
+}
+
+export interface CreateAppointmentInput {
+  patientId: string;
+  professionalMembershipId: string;
+  startAt: string;
+  endAt: string;
+  reason?: string;
+  administrativeNotes?: string;
+}
+
+export interface UpdateAppointmentInput {
+  professionalMembershipId?: string;
+  startAt?: string;
+  endAt?: string;
+  reason?: string | null;
+  administrativeNotes?: string | null;
+}
+
+export interface UpdateAppointmentStatusInput {
+  status: 'CONFIRMED' | 'IN_PROGRESS' | 'COMPLETED' | 'NO_SHOW';
+}
+
+export interface CancelAppointmentInput {
+  cancellationReason?: string;
+}
+
 export interface AppointmentListItem {
   id: string;
   patientId: string;

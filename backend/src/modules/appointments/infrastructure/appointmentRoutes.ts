@@ -12,6 +12,9 @@ router.get('/', AppointmentController.list);
 // Crear cita
 router.post('/', AppointmentController.create);
 
+// Listar profesionales asignables
+router.get('/professionals', AppointmentController.listProfessionals);
+
 // Detalle de cita
 router.get('/:id', AppointmentController.getById);
 
