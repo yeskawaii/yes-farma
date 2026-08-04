@@ -7,6 +7,7 @@ import { PatientList } from '../features/patients/PatientList';
 import { PatientDetail } from '../features/patients/PatientDetail';
 import { PatientCreate } from '../features/patients/PatientCreate';
 import { PatientEdit } from '../features/patients/PatientEdit';
+import { AppointmentsPage } from '../features/appointments/AppointmentsPage';
 
 export const router = createBrowserRouter([
   {
@@ -47,7 +48,7 @@ export const router = createBrowserRouter([
           },
           {
             path: 'appointments',
-            element: <div className="p-8"><h2>Módulo de Agenda (Próximamente)</h2></div>,
+            element: <AppointmentsPage />,
           },
         ],
       }

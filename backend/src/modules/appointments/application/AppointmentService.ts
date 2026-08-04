@@ -77,13 +77,36 @@ export class AppointmentService {
         endAt: true,
         status: true,
         reason: true,
-        administrativeNotes: true,
-        createdAt: true,
-        updatedAt: true
+        patient: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            secondLastName: true
+          }
+        },
+        professional: {
+          select: {
+            id: true,
+            role: true,
+            user: {
+              select: {
+                firstName: true,
+                lastName: true
+              }
+            }
+          }
+        }
       }
     });
 
-    return items;
+    return items.map((item: any) => {
+      const { professional, ...rest } = item;
+      return {
+        ...rest,
+        professionalMembership: professional
+      };
+    });
   }
 
   async getAppointmentById(clinicId: string, id: string) {

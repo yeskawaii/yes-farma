@@ -291,14 +291,30 @@ test('AppointmentService - Create and List', async (t) => {
     assert.strictEqual(auditCreated, true);
   });
 
-  await t.test('21. GET siempre filtra por clinicId', async () => {
-    let capturedWhere: any = {};
+  await t.test('21. GET siempre filtra por clinicId y proyecta lo mínimo seguro', async () => {
+    let capturedArgs: any = {};
     const prisma = createMockPrisma({
-      appointment: {findMany: async ({ where }: any) => { capturedWhere = where; return []; } }
+      appointment: {findMany: async (args: any) => {
+        capturedArgs = args;
+        return [{ id: 'a1', professional: { id: 'prof-1' } }];
+      } }
     });
     const svc = new AppointmentService(prisma);
-    await svc.listAppointments('c1', { startAt: '2026-08-01T00:00:00Z', endAt: '2026-08-02T00:00:00Z' });
-    assert.strictEqual(capturedWhere.clinicId, 'c1');
+    const result = await svc.listAppointments('c1', { startAt: '2026-08-01T00:00:00Z', endAt: '2026-08-02T00:00:00Z' });
+
+    assert.strictEqual(capturedArgs.where.clinicId, 'c1');
+    assert.ok(capturedArgs.select.patient);
+    assert.strictEqual(capturedArgs.select.patient.select.firstName, true);
+    assert.strictEqual(capturedArgs.select.patient.select.email, undefined);
+    assert.strictEqual(capturedArgs.select.administrativeNotes, undefined);
+    assert.ok(capturedArgs.select.professional);
+    assert.ok(capturedArgs.select.professional.select.user);
+    assert.strictEqual(capturedArgs.select.professional.select.user.select.passwordHash, undefined);
+
+    assert.ok(result);
+    assert.strictEqual(result.length, 1);
+    assert.strictEqual(result[0].professionalMembership.id, 'prof-1');
+    assert.strictEqual((result[0] as any).professional, undefined);
   });
 
   await t.test('22. GET devuelve citas que se superponen al rango aunque comiencen antes', async () => {
