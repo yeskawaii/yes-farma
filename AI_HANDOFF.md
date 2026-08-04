@@ -9,8 +9,8 @@ Yes Farma es una plataforma clínica SaaS en evolución, inicialmente diseñada 
 
 ## Estado Resumido
 El proyecto tiene un frontend React (Vite) con diseño clínico claro, un backend Node.js (Express, TypeScript) con sesiones opacas persistidas en PostgreSQL (Prisma 7), y una infraestructura Dockerizada para desarrollo y producción separadas. **El despliegue a producción ya se realizó correctamente, la migración inicial fue aplicada y el propietario fue creado.**
-El módulo de Pacientes está completo y completamente desplegado en producción. La migración productiva correspondiente ha sido aplicada, y las pruebas productivas fueron aprobadas. El proyecto queda estable en main, en el commit 931563a.
-El siguiente módulo funcional recomendado es la Agenda de Citas.
+El módulo de Pacientes y el módulo de Agenda de Citas están completos y completamente desplegados en producción. La migración productiva de Agenda ha sido aplicada, las pruebas backend (122 de 122) fueron aprobadas y las validaciones productivas manuales terminaron correctamente. El proyecto queda estable en main, en el commit 7f083bb. La Agenda soporta aislamiento por clínica (multi-tenant), zonas horarias estrictas (America/Mexico_City), auditoría de operaciones, prevención de traslapes y vistas interactivas.
+El siguiente módulo funcional planificado es Consulta clínica / Expediente clínico.
 
 ## Arquitectura
 - **Frontend:** React, TypeScript, Vite, Tailwind CSS, React Router, PWA. Peticiones de API gestionadas con `fetch` y validación de `credentials: include`.
@@ -22,8 +22,8 @@ El siguiente módulo funcional recomendado es la Agenda de Citas.
 
 ## Ramas y Commit Estable
 - **Rama Estable:** `main`
-- **Último Commit Estable (Verificado):** `931563a`
-- **Rama Actual (Documentación):** `docs/close-patients-production`
+- **Commit funcional desplegado de Agenda:** `7f083bb`
+- **Rama Actual:** `docs/close-appointments-deployment` (rama temporal utilizada para el cierre documental)
 
 ## Entornos y Comandos de Inicio (Lectura)
 - **Local (Desarrollo):**
@@ -45,7 +45,7 @@ El siguiente módulo funcional recomendado es la Agenda de Citas.
 - Prisma: `npx prisma validate`, `npx prisma migrate status`
 
 ## Siguiente Paso Exacto
-Producción funciona de punta a punta. El **siguiente paso exacto** es iniciar el diseño y desarrollo del módulo funcional Agenda de Citas.
+Producción funciona de punta a punta con la Agenda de Citas operativa. El **siguiente paso exacto** es iniciar el diseño y desarrollo del módulo funcional Consulta clínica / Expediente clínico en la futura rama `feat/clinical-encounters-foundation`.
 
 ## Enlaces a Documentación
 - Contexto de Negocio: [PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md)

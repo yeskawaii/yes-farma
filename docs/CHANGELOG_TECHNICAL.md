@@ -6,6 +6,21 @@ Este documento registra cronológicamente los hitos arquitectónicos y de sistem
 
 ### Agosto 2026
 
+- **Agenda de Citas — implementación y cierre productivo**
+  *Fecha: 04 de Agosto de 2026 | Commit funcional desplegado: 7f083bb*
+  - modelo `Appointment` y relaciones (`Patient`, `Membership`) con aislamiento multi-tenant por clínica;
+  - estados completos: `SCHEDULED`, `CONFIRMED`, `IN_PROGRESS`, `COMPLETED`, `CANCELLED` y `NO_SHOW`;
+  - prevención de traslapes (permitiendo contiguas) y conversión robusta de zona `America/Mexico_City`;
+  - transacciones nivel `Serializable` y reintentos ante fallos P2034;
+  - flujos completos de listado, creación, detalle, edición, reprogramación y cancelación con motivo;
+  - UI interactiva diaria y semanal, preservando la presentación en tarjetas y modales sin desbordamientos;
+  - 122 de 122 pruebas backend aprobadas;
+  - backend typecheck, backend build y frontend build aprobados;
+  - migración `20260803232610_add_appointments_foundation` aplicada en producción;
+  - frontend y endpoint `/api/health` respondiendo HTTP 200, PostgreSQL `healthy`;
+  - prueba manual completa del flujo aprobada en producción;
+  - proyecto Chispita y la configuración del proxy compartido permanecieron sin modificaciones.
+
 - **Cierre Productivo del Módulo de Pacientes**
   *Commit desplegado: 931563a*
   - respaldo previo;

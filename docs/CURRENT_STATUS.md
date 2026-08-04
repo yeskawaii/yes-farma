@@ -1,8 +1,8 @@
 # Estado Actual Fotográfico
 
-- **Fecha de Actualización:** 03 de Agosto de 2026
-- **Rama Actual:** `main`
-- **Commit Estable Referencia:** `931563a`
+- **Fecha de Actualización:** 04 de Agosto de 2026
+- **Rama Estable:** `main`
+- **Commit funcional desplegado:** `7f083bb`
 
 ## Funciones Terminadas
 - ✅ **Base de Datos y ORM:** Integración nativa de Prisma 7 con driver `pg`.
@@ -13,23 +13,28 @@
 - ✅ **Contenedores:** Esquema Docker Dev y Prod diferenciados (Nginx interno para estáticos, y backend aislado).
 - ✅ **Infraestructura:** Despliegue completado y operativo en DigitalOcean. El propietario productivo fue creado mediante _bootstrap_.
 - ✅ **Módulo de Pacientes:** Terminado en entorno local y desplegado exitosamente en producción. Incluye listado, búsqueda, filtros, creación, edición, desactivación, reactivación y manejo de duplicados.
+- ✅ **Módulo de Agenda de Citas:** Completado en local y desplegado exitosamente en producción. Incluye modelo de citas, control estricto de zonas horarias, validación de traslapes, aislamiento multi-tenant, y vistas diaria/semanal interactivas.
 
 ## Funciones Pendientes
-- ❌ Módulo de Agenda de Citas médicas.
-- ❌ Expedientes Clínicos.
-- ❌ Odontograma y demás módulos no construidos.
+- ❌ Consulta clínica / Expediente clínico (siguiente módulo, aún no comenzado en la futura rama `feat/clinical-encounters-foundation`).
+- ❌ Odontograma y plan de tratamiento.
 
 ## Pruebas y Migraciones
-- **Pruebas y Validación (Pacientes):** 34 pruebas backend aprobadas y pruebas productivas manuales validadas.
-- **Pruebas Productivas:** Aprobadas íntegramente. GET `/api/health` responde HTTP 200. Persistencia garantizada al recargar, rutas protegidas tras cerrar sesión y ocultación de UUIDs técnicos.
-- **Migraciones:** La migración `20260802192605_add_patients_foundation` fue aplicada en producción. `prisma migrate status` confirmó el esquema actualizado. Previamente se creó y verificó un respaldo PostgreSQL en formato custom.
+- **Pruebas y Validación:**
+  - 122 de 122 pruebas backend aprobadas.
+  - Backend typecheck aprobado.
+  - Backend build aprobado.
+  - Frontend build aprobado.
+  - (Histórico Pacientes): 34 pruebas backend aprobadas.
+- **Pruebas Productivas:** Aprobadas íntegramente. GET `/api/health` y frontend responden HTTP 200. Flujos manuales validados: creación de citas, edición, cambio de estado, prevención de conflictos, vistas funcionales, así como pruebas productivas manuales validadas de Pacientes. Persistencia garantizada al recargar, rutas protegidas y ocultación de UUIDs técnicos.
+- **Migraciones:** Las migraciones `20260802192605_add_patients_foundation` y `20260803232610_add_appointments_foundation` fueron aplicadas en producción. Prisma confirmó el esquema actualizado. Previamente se creó y verificó un respaldo PostgreSQL en formato custom.
 
 ## Estado Local y Productivo
 - **Local:** Funcional, UI actualizada, pruebas en verde y bases de datos reiniciables sin impacto.
-- **Productivo (VPS):** Estable en `https://yes-farma.duckdns.org`. Backend, frontend y PostgreSQL están operativos tras el despliegue del módulo Pacientes. Base de datos `healthy`.
+- **Productivo (VPS):** Estable en `https://yes-farma.duckdns.org`. Contenedores backend y frontend quedaron usando las nuevas imágenes de producción. PostgreSQL permanece `healthy` tras el despliegue del módulo Agenda de Citas. El proyecto Chispita no fue modificado.
 
 ## Riesgos Actuales
 - **Recursos del Servidor:** El VPS en DigitalOcean tiene solo ~313 MB RAM libres y comparte recursos con el proyecto "Chispita". Existe riesgo elevado de interrupciones si se disparan procesos pesados de compilación (`npm run build`) múltiples al mismo tiempo en el servidor en caliente.
 
 ## Siguiente Incremento Recomendado
-El siguiente incremento es la **Agenda de Citas**.
+El siguiente incremento planificado es la **Consulta clínica / Expediente clínico** (rama prevista: `feat/clinical-encounters-foundation`, aún no creada).
