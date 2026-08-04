@@ -6,10 +6,22 @@ const router = Router();
 
 router.use(authMiddleware);
 
-// Todos los roles activos en la clínica pueden consultar
+// Listar citas
 router.get('/', AppointmentController.list);
 
-// Todos los roles activos pueden crear, el Service aplica las restricciones granulares
+// Crear cita
 router.post('/', AppointmentController.create);
+
+// Detalle de cita
+router.get('/:id', AppointmentController.getById);
+
+// Editar cita (reprogramar/notas)
+router.patch('/:id', AppointmentController.update);
+
+// Cambiar estado (IN_PROGRESS, COMPLETED, NO_SHOW, CONFIRMED)
+router.patch('/:id/status', AppointmentController.updateStatus);
+
+// Cancelar cita
+router.patch('/:id/cancel', AppointmentController.cancel);
 
 export { router as appointmentRoutes };
