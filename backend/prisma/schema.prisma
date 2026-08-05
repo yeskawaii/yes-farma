@@ -50,6 +50,11 @@ enum SexAtBirth {
   UNKNOWN
 }
 
+enum ClinicalEncounterStatus {
+  DRAFT
+  FINALIZED
+}
+
 model User {
   id           String     @id @default(uuid()) @db.Uuid
   email        String     @unique
@@ -59,52 +64,58 @@ model User {
   status       UserStatus @default(ACTIVE)
   lastLoginAt  DateTime?
 
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  memberships  Membership[]
-  sessions     Session[]
-  auditEvents  AuditEvent[]
+  memberships Membership[]
+  sessions    Session[]
+  auditEvents AuditEvent[]
 }
 
 model Clinic {
-  id        String       @id @default(uuid()) @db.Uuid
-  name      String
-  timeZone  String       @default("America/Mexico_City") @map("timezone")
-  status    ClinicStatus @default(ACTIVE)
+  id       String       @id @default(uuid()) @db.Uuid
+  name     String
+  timeZone String       @default("America/Mexico_City") @map("timezone")
+  status   ClinicStatus @default(ACTIVE)
 
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  memberships    Membership[]
-  activeSessions Session[]
-  auditEvents    AuditEvent[]
-  patients       Patient[]
-  appointments   Appointment[]
+  memberships        Membership[]
+  activeSessions     Session[]
+  auditEvents        AuditEvent[]
+  patients           Patient[]
+  appointments       Appointment[]
+  clinicalEncounters ClinicalEncounter[]
 }
 
 model Membership {
-  id        String           @id @default(uuid()) @db.Uuid
-  userId    String           @db.Uuid
-  clinicId  String           @db.Uuid
-  role      MembershipRole
-  status    MembershipStatus @default(ACTIVE)
+  id       String           @id @default(uuid()) @db.Uuid
+  userId   String           @db.Uuid
+  clinicId String           @db.Uuid
+  role     MembershipRole
+  status   MembershipStatus @default(ACTIVE)
 
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  user      User             @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  clinic    Clinic           @relation(fields: [clinicId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  profile   ProfessionalProfile?
+  user    User                 @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  clinic  Clinic               @relation(fields: [clinicId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  profile ProfessionalProfile?
 
   createdPatients     Patient[] @relation("PatientCreatedBy")
   updatedPatients     Patient[] @relation("PatientUpdatedBy")
   deactivatedPatients Patient[] @relation("PatientDeactivatedBy")
 
-  appointmentsAsProfessional Appointment[] @relation("AppointmentProfessional")
-  createdAppointments        Appointment[] @relation("AppointmentCreatedBy")
-  updatedAppointments        Appointment[] @relation("AppointmentUpdatedBy")
-  cancelledAppointments      Appointment[] @relation("AppointmentCancelledBy")
+  appointmentsAsProfessional         Appointment[]                @relation("AppointmentProfessional")
+  createdAppointments                Appointment[]                @relation("AppointmentCreatedBy")
+  updatedAppointments                Appointment[]                @relation("AppointmentUpdatedBy")
+  cancelledAppointments              Appointment[]                @relation("AppointmentCancelledBy")
+  clinicalEncountersAsProfessional   ClinicalEncounter[]          @relation("ClinicalEncounterProfessional")
+  createdClinicalEncounters          ClinicalEncounter[]          @relation("ClinicalEncounterCreatedBy")
+  updatedClinicalEncounters          ClinicalEncounter[]          @relation("ClinicalEncounterUpdatedBy")
+  finalizedClinicalEncounters        ClinicalEncounter[]          @relation("ClinicalEncounterFinalizedBy")
+  createdClinicalEncounterAmendments ClinicalEncounterAmendment[] @relation("ClinicalEncounterAmendmentCreatedBy")
 
   @@unique([userId, clinicId])
   @@index([userId])
@@ -112,16 +123,16 @@ model Membership {
 }
 
 model ProfessionalProfile {
-  id                  String     @id @default(uuid()) @db.Uuid
-  membershipId        String     @unique @db.Uuid
+  id                  String  @id @default(uuid()) @db.Uuid
+  membershipId        String  @unique @db.Uuid
   specialtyCode       String
   professionalLicense String?
-  active              Boolean    @default(true)
+  active              Boolean @default(true)
 
-  createdAt           DateTime   @default(now())
-  updatedAt           DateTime   @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  membership          Membership @relation(fields: [membershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 }
 
 model Session {
@@ -135,10 +146,10 @@ model Session {
   ipAddress      String?
   userAgent      String?
 
-  createdAt      DateTime  @default(now())
+  createdAt DateTime @default(now())
 
-  user           User      @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  activeClinic   Clinic?   @relation(fields: [activeClinicId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  user         User    @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  activeClinic Clinic? @relation(fields: [activeClinicId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   @@index([userId])
   @@index([expiresAt])
@@ -146,52 +157,53 @@ model Session {
 }
 
 model AuditEvent {
-  id          String   @id @default(uuid()) @db.Uuid
-  clinicId    String?  @db.Uuid
-  actorUserId String?  @db.Uuid
+  id          String  @id @default(uuid()) @db.Uuid
+  clinicId    String? @db.Uuid
+  actorUserId String? @db.Uuid
   action      String
   entityType  String
   entityId    String?
-  success     Boolean  @default(true)
+  success     Boolean @default(true)
   metadata    Json?
   ipAddress   String?
   userAgent   String?
 
-  createdAt   DateTime @default(now())
+  createdAt DateTime @default(now())
 
-  clinic      Clinic?  @relation(fields: [clinicId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  actorUser   User?    @relation(fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  clinic    Clinic? @relation(fields: [clinicId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  actorUser User?   @relation(fields: [actorUserId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   @@index([clinicId])
   @@index([actorUserId])
 }
 
 model Patient {
-  id                        String        @id @default(uuid()) @db.Uuid
-  clinicId                  String        @db.Uuid
-  firstName                 String
-  lastName                  String
-  secondLastName            String?
-  birthDate                 DateTime?     @db.Date
-  sexAtBirth                SexAtBirth?
-  phone                     String?
-  email                     String?
-  administrativeNotes       String?
-  status                    PatientStatus @default(ACTIVE)
+  id                  String        @id @default(uuid()) @db.Uuid
+  clinicId            String        @db.Uuid
+  firstName           String
+  lastName            String
+  secondLastName      String?
+  birthDate           DateTime?     @db.Date
+  sexAtBirth          SexAtBirth?
+  phone               String?
+  email               String?
+  administrativeNotes String?
+  status              PatientStatus @default(ACTIVE)
 
-  createdAt                 DateTime      @default(now())
-  updatedAt                 DateTime      @updatedAt
-  createdByMembershipId     String        @db.Uuid
-  updatedByMembershipId     String        @db.Uuid
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+  createdByMembershipId     String    @db.Uuid
+  updatedByMembershipId     String    @db.Uuid
   deactivatedAt             DateTime?
-  deactivatedByMembershipId String?       @db.Uuid
+  deactivatedByMembershipId String?   @db.Uuid
 
-  clinic                    Clinic        @relation(fields: [clinicId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  createdBy                 Membership    @relation("PatientCreatedBy", fields: [createdByMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  updatedBy                 Membership    @relation("PatientUpdatedBy", fields: [updatedByMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  deactivatedBy             Membership?   @relation("PatientDeactivatedBy", fields: [deactivatedByMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  clinic        Clinic      @relation(fields: [clinicId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  createdBy     Membership  @relation("PatientCreatedBy", fields: [createdByMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  updatedBy     Membership  @relation("PatientUpdatedBy", fields: [updatedByMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  deactivatedBy Membership? @relation("PatientDeactivatedBy", fields: [deactivatedByMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
-  appointments              Appointment[]
+  appointments       Appointment[]
+  clinicalEncounters ClinicalEncounter[]
 
   @@index([clinicId, status])
   @@index([clinicId, lastName, firstName])
@@ -201,30 +213,31 @@ model Patient {
 }
 
 model Appointment {
-  id                         String            @id @default(uuid()) @db.Uuid
-  clinicId                   String            @db.Uuid
-  patientId                  String            @db.Uuid
-  professionalMembershipId   String            @db.Uuid
-  startAt                    DateTime          @db.Timestamptz(3)
-  endAt                      DateTime          @db.Timestamptz(3)
-  status                     AppointmentStatus @default(SCHEDULED)
-  reason                     String?
-  administrativeNotes        String?
+  id                       String            @id @default(uuid()) @db.Uuid
+  clinicId                 String            @db.Uuid
+  patientId                String            @db.Uuid
+  professionalMembershipId String            @db.Uuid
+  startAt                  DateTime          @db.Timestamptz(3)
+  endAt                    DateTime          @db.Timestamptz(3)
+  status                   AppointmentStatus @default(SCHEDULED)
+  reason                   String?
+  administrativeNotes      String?
 
-  createdAt                  DateTime          @default(now())
-  updatedAt                  DateTime          @updatedAt
-  createdByMembershipId      String            @db.Uuid
-  updatedByMembershipId      String            @db.Uuid
-  cancelledAt                DateTime?         @db.Timestamptz(3)
-  cancelledByMembershipId    String?           @db.Uuid
-  cancellationReason         String?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+  createdByMembershipId   String    @db.Uuid
+  updatedByMembershipId   String    @db.Uuid
+  cancelledAt             DateTime? @db.Timestamptz(3)
+  cancelledByMembershipId String?   @db.Uuid
+  cancellationReason      String?
 
-  clinic                     Clinic            @relation(fields: [clinicId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  patient                    Patient           @relation(fields: [patientId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  professional               Membership        @relation("AppointmentProfessional", fields: [professionalMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  createdBy                  Membership        @relation("AppointmentCreatedBy", fields: [createdByMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  updatedBy                  Membership        @relation("AppointmentUpdatedBy", fields: [updatedByMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  cancelledBy                Membership?       @relation("AppointmentCancelledBy", fields: [cancelledByMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  clinic            Clinic             @relation(fields: [clinicId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  patient           Patient            @relation(fields: [patientId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  professional      Membership         @relation("AppointmentProfessional", fields: [professionalMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  createdBy         Membership         @relation("AppointmentCreatedBy", fields: [createdByMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  updatedBy         Membership         @relation("AppointmentUpdatedBy", fields: [updatedByMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  cancelledBy       Membership?        @relation("AppointmentCancelledBy", fields: [cancelledByMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  clinicalEncounter ClinicalEncounter?
 
   @@index([clinicId, startAt])
   @@index([clinicId, endAt])
@@ -232,4 +245,113 @@ model Appointment {
   @@index([clinicId, professionalMembershipId, startAt])
   @@index([clinicId, patientId, startAt])
   @@index([professionalMembershipId, startAt, endAt])
+}
+
+model ClinicalEncounter {
+  id                       String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clinicId                 String                  @db.Uuid
+  patientId                String                  @db.Uuid
+  professionalMembershipId String                  @db.Uuid
+  appointmentId            String?                 @unique @db.Uuid
+  occurredAt               DateTime                @db.Timestamptz(3)
+  status                   ClinicalEncounterStatus @default(DRAFT)
+  version                  Int                     @default(1)
+  reasonForVisit           String?                 @db.Text
+  relevantHistory          String?                 @db.Text
+  allergies                String?                 @db.Text
+  currentMedications       String?                 @db.Text
+  physicalExamination      String?                 @db.Text
+  indications              String?                 @db.Text
+  clinicalNotes            String?                 @db.Text
+  createdAt                DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt                DateTime                @updatedAt @db.Timestamptz(3)
+  createdByMembershipId    String                  @db.Uuid
+  updatedByMembershipId    String                  @db.Uuid
+  finalizedAt              DateTime?               @db.Timestamptz(3)
+  finalizedByMembershipId  String?                 @db.Uuid
+
+  clinic       Clinic                       @relation(fields: [clinicId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  patient      Patient                      @relation(fields: [patientId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  professional Membership                   @relation("ClinicalEncounterProfessional", fields: [professionalMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  createdBy    Membership                   @relation("ClinicalEncounterCreatedBy", fields: [createdByMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  updatedBy    Membership                   @relation("ClinicalEncounterUpdatedBy", fields: [updatedByMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  finalizedBy  Membership?                  @relation("ClinicalEncounterFinalizedBy", fields: [finalizedByMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  appointment  Appointment?                 @relation(fields: [appointmentId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  vitalSigns   ClinicalVitalSigns?
+  diagnoses    ClinicalDiagnosis[]
+  procedures   ClinicalProcedure[]
+  amendments   ClinicalEncounterAmendment[]
+
+  @@unique([clinicId, id])
+  @@index([clinicId, patientId, occurredAt])
+  @@index([clinicId, professionalMembershipId, occurredAt], map: "ClinicalEncounter_clinicId_professionalMembershipId_occurr_idx")
+  @@index([clinicId, status, occurredAt])
+  @@index([clinicId, updatedAt])
+}
+
+model ClinicalVitalSigns {
+  id                      String   @id @default(uuid()) @db.Uuid
+  clinicId                String   @db.Uuid
+  encounterId             String   @db.Uuid
+  systolicBloodPressure   Int?
+  diastolicBloodPressure  Int?
+  heartRate               Int?
+  respiratoryRate         Int?
+  temperatureCelsius      Decimal? @db.Decimal(4, 1)
+  oxygenSaturationPercent Int?
+  weightKg                Decimal? @db.Decimal(6, 2)
+  heightCm                Int?
+  measuredAt              DateTime @default(now()) @db.Timestamptz(3)
+  createdAt               DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime @updatedAt @db.Timestamptz(3)
+
+  encounter ClinicalEncounter @relation(fields: [clinicId, encounterId], references: [clinicId, id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([clinicId, encounterId])
+  @@index([clinicId, measuredAt])
+}
+
+model ClinicalDiagnosis {
+  id          String   @id @default(uuid()) @db.Uuid
+  clinicId    String   @db.Uuid
+  encounterId String   @db.Uuid
+  description String   @db.VarChar(1000)
+  code        String?  @db.VarChar(64)
+  isPrimary   Boolean  @default(false)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  encounter ClinicalEncounter @relation(fields: [clinicId, encounterId], references: [clinicId, id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([clinicId, encounterId, sortOrder])
+}
+
+model ClinicalProcedure {
+  id          String   @id @default(uuid()) @db.Uuid
+  clinicId    String   @db.Uuid
+  encounterId String   @db.Uuid
+  description String   @db.VarChar(1000)
+  code        String?  @db.VarChar(64)
+  notes       String?  @db.Text
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  encounter ClinicalEncounter @relation(fields: [clinicId, encounterId], references: [clinicId, id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([clinicId, encounterId, sortOrder])
+}
+
+model ClinicalEncounterAmendment {
+  id                    String   @id @default(uuid()) @db.Uuid
+  clinicId              String   @db.Uuid
+  encounterId           String   @db.Uuid
+  createdByMembershipId String   @db.Uuid
+  reason                String   @db.VarChar(500)
+  note                  String   @db.Text
+  createdAt             DateTime @default(now()) @db.Timestamptz(3)
+
+  encounter ClinicalEncounter @relation(fields: [clinicId, encounterId], references: [clinicId, id], onDelete: Restrict, onUpdate: Cascade)
+  createdBy Membership        @relation("ClinicalEncounterAmendmentCreatedBy", fields: [createdByMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([clinicId, encounterId, createdAt])
 }
