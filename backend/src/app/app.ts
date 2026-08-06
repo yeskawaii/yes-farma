@@ -6,6 +6,7 @@ import { env } from '../config/env';
 import { authRoutes } from '../modules/identity/http/authRoutes';
 import { patientRoutes } from '../modules/patients/infrastructure/patientRoutes';
 import { appointmentRoutes } from '../modules/appointments/infrastructure/appointmentRoutes';
+import { clinicalEncounterRoutes } from '../modules/clinical-encounters/infrastructure/clinicalEncounterRoutes';
 import { errorHandler } from '../shared/errors/errorHandler';
 
 export const createApp = () => {
@@ -32,6 +33,7 @@ export const createApp = () => {
   app.use('/api/auth', authRoutes);
   app.use('/api/patients', patientRoutes);
   app.use('/api/appointments', appointmentRoutes);
+  app.use('/api/clinical-encounters', clinicalEncounterRoutes);
 
   // Global Error Handler
   app.use(errorHandler);
