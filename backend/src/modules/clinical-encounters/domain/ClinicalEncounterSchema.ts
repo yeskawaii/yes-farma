@@ -241,3 +241,12 @@ export const finalizeClinicalEncounterSchema = z.object({
 
 export type FinalizeClinicalEncounterInput =
   z.infer<typeof finalizeClinicalEncounterSchema>;
+
+export const createClinicalEncounterAmendmentSchema = z.object({
+  version: z.number().int().min(1, 'version must be >= 1'),
+  reason: z.string().trim().min(1, 'reason is required').max(500, 'reason max length is 500'),
+  note: z.string().trim().min(1, 'note is required')
+}).strict();
+
+export type CreateClinicalEncounterAmendmentInput =
+  z.infer<typeof createClinicalEncounterAmendmentSchema>;

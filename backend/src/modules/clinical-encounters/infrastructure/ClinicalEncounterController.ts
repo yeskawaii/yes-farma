@@ -4,7 +4,8 @@ import {
   createClinicalEncounterSchema,
   listClinicalEncountersSchema,
   updateClinicalEncounterSchema,
-  finalizeClinicalEncounterSchema
+  finalizeClinicalEncounterSchema,
+  createClinicalEncounterAmendmentSchema
 } from '../domain/ClinicalEncounterSchema';
 import { AuthContext } from '../../../middlewares/auth';
 import { z } from 'zod';
@@ -131,6 +132,41 @@ export class ClinicalEncounterController {
       );
 
       res.json(result);
+    } catch (error: unknown) {
+      if (error instanceof z.ZodError) {
+        return next(
+          new AppError(
+            'VALIDATION_ERROR',
+            'Datos inválidos',
+            400
+          )
+        );
+      }
+
+      next(error);
+    }
+  }
+
+  static async addAmendment(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const context = getAuthCtx(req);
+      const id = z.string().uuid().parse(req.params.id);
+      const input = createClinicalEncounterAmendmentSchema.parse(req.body);
+
+      const result = await clinicalEncounterService.addAmendment(
+        context.clinicId,
+        id,
+        context.membershipId,
+        context.userId,
+        context.role,
+        input
+      );
+
+      res.status(201).json(result);
     } catch (error: unknown) {
       if (error instanceof z.ZodError) {
         return next(

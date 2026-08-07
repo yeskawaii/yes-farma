@@ -11,5 +11,6 @@ router.get('/', ClinicalEncounterController.list);
 router.get('/:id', ClinicalEncounterController.getById);
 router.patch('/:id', ClinicalEncounterController.update);
 router.post('/:id/finalize', ClinicalEncounterController.finalize);
+router.post('/:id/amendments', ClinicalEncounterController.addAmendment);
 
 export { router as clinicalEncounterRoutes };
