@@ -5,6 +5,7 @@ import { patientsApi } from './api';
 import { ApiClientError } from '../../core/api/client';
 import type { PatientDetail as PatientDetailType } from './types';
 import { useAuth } from '../../core/auth/AuthProvider';
+import { EncounterList } from '../clinical-encounters/EncounterList';
 
 export function PatientDetail() {
   const { id } = useParams<{ id: string }>();
@@ -288,6 +289,9 @@ export function PatientDetail() {
               <p className="text-amber-800 text-sm leading-relaxed whitespace-pre-wrap">{data.administrativeNotes}</p>
             </div>
           )}
+
+          {/* Clinical Encounters */}
+          {id && <EncounterList patientId={id} />}
         </div>
 
         {/* Sidebar Column */}
