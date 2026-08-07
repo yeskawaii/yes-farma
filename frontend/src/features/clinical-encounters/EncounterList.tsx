@@ -1,16 +1,26 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { FileText, AlertCircle, RefreshCw, Calendar, CheckCircle, Clock } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { FileText, AlertCircle, RefreshCw, Calendar, CheckCircle, Clock, Plus } from 'lucide-react';
 import { clinicalEncountersApi } from './api';
 import type { ClinicalEncounterListItem, ClinicalEncounterStatus } from './types';
+import { useAuth } from '../../core/auth/AuthProvider';
 
 interface EncounterListProps {
   patientId: string;
 }
 
 export function EncounterList({ patientId }: EncounterListProps) {
+  const navigate = useNavigate();
+  const { activeRole } = useAuth();
+
   const [encounters, setEncounters] = useState<ClinicalEncounterListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [isCreating, setIsCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  const canCreate = activeRole === 'OWNER' || activeRole === 'PROFESSIONAL';
 
   const requestIdRef = useRef(0);
 
@@ -48,6 +58,22 @@ export function EncounterList({ patientId }: EncounterListProps) {
     };
   }, [fetchEncounters]);
 
+  const handleCreate = async () => {
+    try {
+      setIsCreating(true);
+      setCreateError(null);
+      const res = await clinicalEncountersApi.createClinicalEncounter({
+        patientId,
+        occurredAt: new Date().toISOString()
+      });
+      navigate(`/patients/${patientId}/encounters/${res.id}`);
+    } catch {
+      setCreateError('Error al crear la consulta. Por favor, intenta de nuevo.');
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('es-ES', {
       year: 'numeric',
@@ -78,16 +104,44 @@ export function EncounterList({ patientId }: EncounterListProps) {
 
   return (
     <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col gap-4">
-      <div className="flex flex-col gap-1">
-        <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-          <FileText className="text-blue-500" size={20} />
-          Expediente clínico
-        </h2>
-        <p className="text-sm text-slate-500">Historial de consultas y notas clínicas.</p>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+            <FileText className="text-blue-500" size={20} />
+            Expediente clínico
+          </h2>
+          <p className="text-sm text-slate-500">Historial de consultas y notas clínicas.</p>
+        </div>
+        {canCreate && (
+          <button
+            onClick={handleCreate}
+            disabled={isCreating}
+            className="inline-flex justify-center items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium shadow-sm text-sm disabled:opacity-50 disabled:pointer-events-none"
+          >
+            {isCreating ? (
+              <>
+                <RefreshCw size={16} className="animate-spin" />
+                Creando...
+              </>
+            ) : (
+              <>
+                <Plus size={16} />
+                Nueva consulta
+              </>
+            )}
+          </button>
+        )}
       </div>
 
+      {createError && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2">
+          <AlertCircle size={18} />
+          {createError}
+        </div>
+      )}
+
       {error ? (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-6 flex flex-col items-center justify-center text-center gap-3">
+        <div className="bg-red-50 border border-red-200 rounded-xl p-6 flex flex-col items-center justify-center text-center gap-3 mt-2">
           <AlertCircle className="text-red-500" size={32} />
           <p className="text-red-700 font-medium text-sm">{error}</p>
           <button
@@ -99,7 +153,7 @@ export function EncounterList({ patientId }: EncounterListProps) {
           </button>
         </div>
       ) : loading ? (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 mt-2">
           {[1, 2, 3].map(i => (
             <div key={i} className="h-20 bg-slate-100 rounded-xl animate-pulse"></div>
           ))}
