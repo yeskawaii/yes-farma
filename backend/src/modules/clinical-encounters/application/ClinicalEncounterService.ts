@@ -1,13 +1,20 @@
 import type { Prisma, ClinicalEncounter, AuditEvent, PrismaClient } from '../../../generated/prisma';
 import { Prisma as PrismaNamespace } from '../../../generated/prisma';
 import { AppError } from '../../../shared/errors/AppError';
-import { CreateClinicalEncounterInput, ListClinicalEncountersInput } from '../domain/ClinicalEncounterSchema';
+import {
+  CreateClinicalEncounterInput,
+  ListClinicalEncountersInput,
+  UpdateClinicalEncounterInput
+} from '../domain/ClinicalEncounterSchema';
 
 // Define the transaction client type safely
 export type IPrismaTxEncounter = Omit<PrismaClient, '$connect' | '$disconnect' | '$on' | '$transaction' | '$use' | '$extends'>;
 
 export interface IClinicalEncounterRepository {
   clinicalEncounter: PrismaClient['clinicalEncounter'];
+  clinicalVitalSigns: PrismaClient['clinicalVitalSigns'];
+  clinicalDiagnosis: PrismaClient['clinicalDiagnosis'];
+  clinicalProcedure: PrismaClient['clinicalProcedure'];
   patient: PrismaClient['patient'];
   membership: PrismaClient['membership'];
   appointment: PrismaClient['appointment'];
@@ -481,5 +488,425 @@ export class ClinicalEncounterService {
         }
       }))
     };
+  }
+
+  async updateEncounter(
+    clinicId: string,
+    id: string,
+    membershipId: string,
+    actorUserId: string,
+    actorRole: string,
+    input: UpdateClinicalEncounterInput
+  ) {
+    if (
+      actorRole !== 'OWNER' &&
+      actorRole !== 'PROFESSIONAL'
+    ) {
+      throw new AppError(
+        'FORBIDDEN',
+        'Rol no autorizado para editar encuentros clínicos',
+        403
+      );
+    }
+
+    const {
+      version,
+      occurredAt,
+      vitalSigns,
+      diagnoses,
+      procedures,
+      ...narrativeFields
+    } = input;
+
+    const executeTransaction = async (): Promise<void> => {
+      await this.prisma.$transaction(
+        async (tx) => {
+          const encounter =
+            await tx.clinicalEncounter.findFirst({
+              where: {
+                id,
+                clinicId
+              },
+              select: {
+                id: true,
+                status: true,
+                version: true,
+                professionalMembershipId: true,
+                occurredAt: true
+              }
+            });
+
+          if (!encounter) {
+            throw new AppError(
+              'NOT_FOUND',
+              'Encuentro no encontrado.',
+              404
+            );
+          }
+
+          if (encounter.status === 'FINALIZED') {
+            throw new AppError(
+              'CLINICAL_ENCOUNTER_FINALIZED',
+              'El encuentro ya está finalizado.',
+              409
+            );
+          }
+
+          if (
+            encounter.professionalMembershipId !==
+            membershipId
+          ) {
+            throw new AppError(
+              'FORBIDDEN',
+              'Solo el profesional responsable puede editar este encuentro.',
+              403
+            );
+          }
+
+          if (encounter.version !== version) {
+            throw new AppError(
+              'CLINICAL_ENCOUNTER_VERSION_CONFLICT',
+              'Conflicto de versión. El encuentro ha sido modificado por otro proceso.',
+              409
+            );
+          }
+
+          const updateData:
+            PrismaNamespace.ClinicalEncounterUncheckedUpdateManyInput = {
+              version: {
+                increment: 1
+              },
+              updatedByMembershipId: membershipId,
+
+              ...(occurredAt !== undefined
+                ? {
+                    occurredAt: new Date(occurredAt)
+                  }
+                : {}),
+
+              ...(narrativeFields.reasonForVisit !== undefined
+                ? {
+                    reasonForVisit:
+                      narrativeFields.reasonForVisit
+                  }
+                : {}),
+
+              ...(narrativeFields.relevantHistory !== undefined
+                ? {
+                    relevantHistory:
+                      narrativeFields.relevantHistory
+                  }
+                : {}),
+
+              ...(narrativeFields.allergies !== undefined
+                ? {
+                    allergies: narrativeFields.allergies
+                  }
+                : {}),
+
+              ...(narrativeFields.currentMedications !== undefined
+                ? {
+                    currentMedications:
+                      narrativeFields.currentMedications
+                  }
+                : {}),
+
+              ...(narrativeFields.physicalExamination !== undefined
+                ? {
+                    physicalExamination:
+                      narrativeFields.physicalExamination
+                  }
+                : {}),
+
+              ...(narrativeFields.indications !== undefined
+                ? {
+                    indications:
+                      narrativeFields.indications
+                  }
+                : {}),
+
+              ...(narrativeFields.clinicalNotes !== undefined
+                ? {
+                    clinicalNotes:
+                      narrativeFields.clinicalNotes
+                  }
+                : {})
+            };
+
+          const fieldsChanged: string[] = [];
+
+          if (occurredAt !== undefined) {
+            fieldsChanged.push('occurredAt');
+          }
+
+          if (narrativeFields.reasonForVisit !== undefined) {
+            fieldsChanged.push('reasonForVisit');
+          }
+
+          if (narrativeFields.relevantHistory !== undefined) {
+            fieldsChanged.push('relevantHistory');
+          }
+
+          if (narrativeFields.allergies !== undefined) {
+            fieldsChanged.push('allergies');
+          }
+
+          if (
+            narrativeFields.currentMedications !==
+            undefined
+          ) {
+            fieldsChanged.push('currentMedications');
+          }
+
+          if (
+            narrativeFields.physicalExamination !==
+            undefined
+          ) {
+            fieldsChanged.push('physicalExamination');
+          }
+
+          if (narrativeFields.indications !== undefined) {
+            fieldsChanged.push('indications');
+          }
+
+          if (narrativeFields.clinicalNotes !== undefined) {
+            fieldsChanged.push('clinicalNotes');
+          }
+
+          const updateResult =
+            await tx.clinicalEncounter.updateMany({
+              where: {
+                id,
+                clinicId,
+                status: 'DRAFT',
+                professionalMembershipId: membershipId,
+                version
+              },
+              data: updateData
+            });
+
+          if (updateResult.count === 0) {
+            throw new AppError(
+              'CLINICAL_ENCOUNTER_VERSION_CONFLICT',
+              'Conflicto de versión. El encuentro ha sido modificado por otro proceso.',
+              409
+            );
+          }
+
+          if (vitalSigns !== undefined) {
+            fieldsChanged.push('vitalSigns');
+
+            if (vitalSigns === null) {
+              await tx.clinicalVitalSigns.deleteMany({
+                where: {
+                  clinicId,
+                  encounterId: id
+                }
+              });
+            } else {
+              const existingVitalSigns =
+                await tx.clinicalVitalSigns.findUnique({
+                  where: {
+                    clinicId_encounterId: {
+                      clinicId,
+                      encounterId: id
+                    }
+                  },
+                  select: {
+                    measuredAt: true
+                  }
+                });
+
+              const measuredAt =
+                vitalSigns.measuredAt !== undefined
+                  ? new Date(vitalSigns.measuredAt)
+                  : (
+                      existingVitalSigns?.measuredAt ??
+                      (
+                        occurredAt !== undefined
+                          ? new Date(occurredAt)
+                          : encounter.occurredAt
+                      )
+                    );
+
+              const vitalSignsData = {
+                systolicBloodPressure:
+                  vitalSigns.systolicBloodPressure ?? null,
+                diastolicBloodPressure:
+                  vitalSigns.diastolicBloodPressure ?? null,
+                heartRate:
+                  vitalSigns.heartRate ?? null,
+                respiratoryRate:
+                  vitalSigns.respiratoryRate ?? null,
+                temperatureCelsius:
+                  vitalSigns.temperatureCelsius ?? null,
+                oxygenSaturationPercent:
+                  vitalSigns.oxygenSaturationPercent ?? null,
+                weightKg:
+                  vitalSigns.weightKg ?? null,
+                heightCm:
+                  vitalSigns.heightCm ?? null,
+                measuredAt
+              };
+
+              await tx.clinicalVitalSigns.upsert({
+                where: {
+                  clinicId_encounterId: {
+                    clinicId,
+                    encounterId: id
+                  }
+                },
+                create: {
+                  clinicId,
+                  encounterId: id,
+                  ...vitalSignsData
+                },
+                update: vitalSignsData
+              });
+            }
+          }
+
+          if (diagnoses !== undefined) {
+            fieldsChanged.push('diagnoses');
+
+            await tx.clinicalDiagnosis.deleteMany({
+              where: {
+                clinicId,
+                encounterId: id
+              }
+            });
+
+            if (diagnoses.length > 0) {
+              await tx.clinicalDiagnosis.createMany({
+                data: diagnoses.map(
+                  (diagnosis, index) => ({
+                    clinicId,
+                    encounterId: id,
+                    description: diagnosis.description,
+                    code: diagnosis.code ?? null,
+                    isPrimary: diagnosis.isPrimary,
+                    sortOrder:
+                      diagnosis.sortOrder ?? index
+                  })
+                )
+              });
+            }
+          }
+
+          if (procedures !== undefined) {
+            fieldsChanged.push('procedures');
+
+            await tx.clinicalProcedure.deleteMany({
+              where: {
+                clinicId,
+                encounterId: id
+              }
+            });
+
+            if (procedures.length > 0) {
+              await tx.clinicalProcedure.createMany({
+                data: procedures.map(
+                  (procedure, index) => ({
+                    clinicId,
+                    encounterId: id,
+                    description: procedure.description,
+                    code: procedure.code ?? null,
+                    notes: procedure.notes ?? null,
+                    sortOrder:
+                      procedure.sortOrder ?? index
+                  })
+                )
+              });
+            }
+          }
+
+          const [
+            vitalSignsCount,
+            diagnosisCount,
+            procedureCount
+          ] = await Promise.all([
+            tx.clinicalVitalSigns.count({
+              where: {
+                clinicId,
+                encounterId: id
+              }
+            }),
+            tx.clinicalDiagnosis.count({
+              where: {
+                clinicId,
+                encounterId: id
+              }
+            }),
+            tx.clinicalProcedure.count({
+              where: {
+                clinicId,
+                encounterId: id
+              }
+            })
+          ]);
+
+          await tx.auditEvent.create({
+            data: {
+              clinicId,
+              actorUserId,
+              action: 'CLINICAL_ENCOUNTER_UPDATED',
+              entityType: 'ClinicalEncounter',
+              entityId: id,
+              success: true,
+              metadata: {
+                status: 'DRAFT',
+                fieldsChanged,
+                hasVitalSigns: vitalSignsCount > 0,
+                diagnosisCount,
+                procedureCount
+              }
+            }
+          });
+        },
+        {
+          isolationLevel: 'Serializable'
+        }
+      );
+    };
+
+    let attempts = 0;
+
+    while (attempts < 3) {
+      try {
+        await executeTransaction();
+
+        return await this.getEncounterById(
+          clinicId,
+          id,
+          actorRole
+        );
+      } catch (error: unknown) {
+        if (
+          error instanceof
+            PrismaNamespace.PrismaClientKnownRequestError &&
+          error.code === 'P2034'
+        ) {
+          attempts += 1;
+
+          if (attempts >= 3) {
+            throw new AppError(
+              'CONCURRENCY_ERROR',
+              'No se pudo actualizar el encuentro debido a alta concurrencia. Intente de nuevo.',
+              409
+            );
+          }
+
+          continue;
+        }
+
+        throw error;
+      }
+    }
+
+    throw new AppError(
+      'CONCURRENCY_ERROR',
+      'No se pudo actualizar el encuentro debido a alta concurrencia.',
+      409
+    );
   }
 }

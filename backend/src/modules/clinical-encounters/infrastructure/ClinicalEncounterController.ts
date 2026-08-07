@@ -2,7 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import { ClinicalEncounterService, IClinicalEncounterRepository } from '../application/ClinicalEncounterService';
 import {
   createClinicalEncounterSchema,
-  listClinicalEncountersSchema
+  listClinicalEncountersSchema,
+  updateClinicalEncounterSchema
 } from '../domain/ClinicalEncounterSchema';
 import { AuthContext } from '../../../middlewares/auth';
 import { z } from 'zod';
@@ -67,6 +68,44 @@ export class ClinicalEncounterController {
       if (error instanceof z.ZodError) {
         return next(new AppError('VALIDATION_ERROR', 'ID inválido', 400));
       }
+      next(error);
+    }
+  }
+
+  static async update(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const context = getAuthCtx(req);
+      const id = z.string().uuid().parse(req.params.id);
+      const input = updateClinicalEncounterSchema.parse(
+        req.body
+      );
+
+      const result =
+        await clinicalEncounterService.updateEncounter(
+          context.clinicId,
+          id,
+          context.membershipId,
+          context.userId,
+          context.role,
+          input
+        );
+
+      res.json(result);
+    } catch (error: unknown) {
+      if (error instanceof z.ZodError) {
+        return next(
+          new AppError(
+            'VALIDATION_ERROR',
+            'Datos inválidos',
+            400
+          )
+        );
+      }
+
       next(error);
     }
   }
