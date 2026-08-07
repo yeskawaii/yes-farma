@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, FileText, AlertCircle, RefreshCw, Calendar, Clock, CheckCircle } from 'lucide-react';
 import { clinicalEncountersApi } from './api';
-import type { ClinicalEncounterDetail, VitalSignsInput, DiagnosisInput } from './types';
+import type { ClinicalEncounterDetail, VitalSignsInput, DiagnosisInput, ProcedureInput } from './types';
 import { ApiClientError } from '../../core/api/client';
 
 const narrativeFields = [
@@ -24,6 +24,7 @@ type NarrativeChanges = Partial<Pick<ClinicalEncounterDetail, NarrativeField>>;
 type DraftChanges = NarrativeChanges & {
   vitalSigns?: VitalSignsInput | null;
   diagnoses?: DiagnosisInput[];
+  procedures?: ProcedureInput[];
 };
 
 type VitalSignsState = {
@@ -42,6 +43,13 @@ type DiagnosisFormState = {
   description: string;
   code: string;
   isPrimary: boolean;
+};
+
+type ProcedureFormState = {
+  _uiId: string;
+  description: string;
+  code: string;
+  notes: string;
 };
 
 export function EncounterEditor() {
@@ -74,6 +82,7 @@ export function EncounterEditor() {
   });
 
   const [diagnosesForm, setDiagnosesForm] = useState<DiagnosisFormState[]>([]);
+  const [proceduresForm, setProceduresForm] = useState<ProcedureFormState[]>([]);
 
   const [isSaving, setIsSaving] = useState(false);
   const [isFinalizing, setIsFinalizing] = useState(false);
@@ -147,6 +156,15 @@ export function EncounterEditor() {
           description: d.description,
           code: d.code ?? '',
           isPrimary: d.isPrimary
+        }))
+      );
+
+      setProceduresForm(
+        (data.procedures || []).map((p) => ({
+          _uiId: crypto.randomUUID(),
+          description: p.description,
+          code: p.code ?? '',
+          notes: p.notes ?? ''
         }))
       );
     }
@@ -279,8 +297,48 @@ export function EncounterEditor() {
     return false;
   };
 
+  const hasProceduresChanges = (): boolean => {
+    if (!data) return false;
+    const original = data.procedures || [];
+
+    if (original.length !== proceduresForm.length) return true;
+
+    for (let i = 0; i < original.length; i++) {
+      const orig = original[i];
+      const form = proceduresForm[i];
+
+      if (orig.description.trim() !== form.description.trim()) return true;
+      if ((orig.code?.trim() || '') !== form.code.trim()) return true;
+      if ((orig.notes?.trim() || '') !== form.notes.trim()) return true;
+    }
+
+    return false;
+  };
+
+  const validateProceduresForm = (form: ProcedureFormState[]): string | null => {
+    for (let i = 0; i < form.length; i++) {
+      const p = form[i];
+      if (p.description.trim() === '') {
+        return `El procedimiento #${i + 1} requiere una descripción.`;
+      }
+      if (p.description.trim().length > 1000) {
+        return `La descripción del procedimiento #${i + 1} excede los 1000 caracteres.`;
+      }
+      if (p.code.trim().length > 64) {
+        return `El código del procedimiento #${i + 1} excede los 64 caracteres.`;
+      }
+      if (p.notes.trim().length > 5000) {
+        return `Las notas del procedimiento #${i + 1} exceden los 5000 caracteres.`;
+      }
+    }
+    if (form.length > 50) {
+      return 'El número máximo de procedimientos es 50.';
+    }
+    return null;
+  };
+
   const hasAnyChanges = (): boolean => {
-    return hasNarrativeChanges() || hasVitalSignsChanges() || hasDiagnosesChanges();
+    return hasNarrativeChanges() || hasVitalSignsChanges() || hasDiagnosesChanges() || hasProceduresChanges();
   };
 
   const handleSave = async () => {
@@ -298,6 +356,14 @@ export function EncounterEditor() {
       const dErr = validateDiagnosesForm(diagnosesForm);
       if (dErr) {
         setSaveError({ message: dErr, isConflict: false });
+        return;
+      }
+    }
+
+    if (hasProceduresChanges()) {
+      const pErr = validateProceduresForm(proceduresForm);
+      if (pErr) {
+        setSaveError({ message: pErr, isConflict: false });
         return;
       }
     }
@@ -345,6 +411,15 @@ export function EncounterEditor() {
           description: d.description.trim(),
           code: d.code.trim() === '' ? null : d.code.trim(),
           isPrimary: d.isPrimary,
+          sortOrder: index
+        }));
+      }
+
+      if (hasProceduresChanges()) {
+        changes.procedures = proceduresForm.map((p, index) => ({
+          description: p.description.trim(),
+          code: p.code.trim() === '' ? null : p.code.trim(),
+          notes: p.notes.trim() === '' ? null : p.notes.trim(),
           sortOrder: index
         }));
       }
@@ -601,6 +676,40 @@ export function EncounterEditor() {
         description: '',
         code: '',
         isPrimary: false
+      }
+    ]);
+  };
+
+  const moveProcedureUp = (index: number) => {
+    if (index === 0) return;
+    setProceduresForm(prev => {
+      const next = [...prev];
+      [next[index - 1], next[index]] = [next[index], next[index - 1]];
+      return next;
+    });
+  };
+
+  const moveProcedureDown = (index: number) => {
+    if (index === proceduresForm.length - 1) return;
+    setProceduresForm(prev => {
+      const next = [...prev];
+      [next[index], next[index + 1]] = [next[index + 1], next[index]];
+      return next;
+    });
+  };
+
+  const removeProcedure = (index: number) => {
+    setProceduresForm(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const addProcedure = () => {
+    setProceduresForm(prev => [
+      ...prev,
+      {
+        _uiId: crypto.randomUUID(),
+        description: '',
+        code: '',
+        notes: ''
       }
     ]);
   };
@@ -917,6 +1026,146 @@ export function EncounterEditor() {
                   {d.code && (
                     <div className="text-xs text-slate-500 font-mono mt-1">
                       Código: <span className="bg-white border border-slate-200 px-1.5 py-0.5 rounded">{d.code}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )
+        )}
+      </div>
+
+      {/* Procedures Form */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-lg font-bold text-slate-900">Procedimientos</h2>
+          {data.status === 'DRAFT' && (
+            <button
+              onClick={addProcedure}
+              disabled={isSaving || isFinalizing || proceduresForm.length >= 50}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              + Agregar procedimiento
+            </button>
+          )}
+        </div>
+
+        {data.status === 'DRAFT' ? (
+          proceduresForm.length === 0 ? (
+            <p className="text-sm text-slate-500 italic text-center py-4">Sin procedimientos registrados</p>
+          ) : (
+            <div className="space-y-4">
+              {proceduresForm.map((p, index) => (
+                <div key={p._uiId} className="flex flex-col md:flex-row gap-4 p-4 border border-slate-200 rounded-xl bg-slate-50 relative group">
+                  {/* Actions column */}
+                  <div className="flex md:flex-col gap-2 items-center shrink-0">
+                    <button
+                      onClick={() => moveProcedureUp(index)}
+                      disabled={index === 0 || isSaving}
+                      className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-md disabled:opacity-30 transition-colors"
+                      title="Mover arriba"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m18 15-6-6-6 6"/></svg>
+                    </button>
+                    <button
+                      onClick={() => moveProcedureDown(index)}
+                      disabled={index === proceduresForm.length - 1 || isSaving}
+                      className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-md disabled:opacity-30 transition-colors"
+                      title="Mover abajo"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                    </button>
+                    <button
+                      onClick={() => removeProcedure(index)}
+                      disabled={isSaving}
+                      className="p-1.5 text-red-400 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors mt-auto"
+                      title="Eliminar"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+                    </button>
+                  </div>
+
+                  {/* Content column */}
+                  <div className="flex-1 flex flex-col gap-4">
+                    <div className="flex flex-col md:flex-row gap-4">
+                      <div className="flex-1">
+                        <label className="block text-xs font-semibold text-slate-700 mb-1" htmlFor={`proc-desc-${p._uiId}`}>
+                          Descripción <span className="text-red-500">*</span>
+                        </label>
+                        <textarea
+                          id={`proc-desc-${p._uiId}`}
+                          value={p.description}
+                          onChange={(e) => {
+                            setSaveError(null);
+                            setProceduresForm(prev => prev.map((item, i) => i === index ? { ...item, description: e.target.value } : item));
+                          }}
+                          disabled={isSaving}
+                          maxLength={1000}
+                          className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-y min-h-[60px] disabled:bg-slate-100 disabled:text-slate-500"
+                        />
+                      </div>
+                      <div className="w-full md:w-48 shrink-0">
+                        <label className="block text-xs font-semibold text-slate-700 mb-1" htmlFor={`proc-code-${p._uiId}`}>
+                          Código
+                        </label>
+                        <input
+                          id={`proc-code-${p._uiId}`}
+                          type="text"
+                          value={p.code}
+                          onChange={(e) => {
+                            setSaveError(null);
+                            setProceduresForm(prev => prev.map((item, i) => i === index ? { ...item, code: e.target.value } : item));
+                          }}
+                          disabled={isSaving}
+                          maxLength={64}
+                          className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 disabled:bg-slate-100 disabled:text-slate-500"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1" htmlFor={`proc-notes-${p._uiId}`}>
+                        Notas
+                      </label>
+                      <textarea
+                        id={`proc-notes-${p._uiId}`}
+                        value={p.notes}
+                        onChange={(e) => {
+                          setSaveError(null);
+                          setProceduresForm(prev => prev.map((item, i) => i === index ? { ...item, notes: e.target.value } : item));
+                        }}
+                        disabled={isSaving}
+                        maxLength={5000}
+                        className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-y min-h-[60px] disabled:bg-slate-100 disabled:text-slate-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        ) : (
+          !data.procedures || data.procedures.length === 0 ? (
+            <p className="text-sm text-slate-500 italic">Sin procedimientos registrados</p>
+          ) : (
+            <div className="space-y-4">
+              {data.procedures.map((p) => (
+                <div key={p.id} className="p-4 border border-slate-200 rounded-xl bg-slate-50 flex flex-col gap-2">
+                  <div className="flex items-start gap-2">
+                    <p className="text-sm text-slate-900 font-medium leading-relaxed flex-1 whitespace-pre-wrap">{p.description}</p>
+                  </div>
+                  {(p.code || p.notes) && (
+                    <div className="text-xs text-slate-500 flex flex-col gap-1 mt-1">
+                      {p.code && (
+                        <div className="font-mono">
+                          Código: <span className="bg-white border border-slate-200 px-1.5 py-0.5 rounded">{p.code}</span>
+                        </div>
+                      )}
+                      {p.notes && (
+                        <div className="mt-1">
+                          <span className="font-semibold">Notas:</span>
+                          <p className="whitespace-pre-wrap mt-0.5">{p.notes}</p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
