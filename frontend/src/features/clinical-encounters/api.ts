@@ -38,5 +38,9 @@ export const clinicalEncountersApi = {
 
   updateClinicalEncounter: async (id: string, data: UpdateClinicalEncounterInput): Promise<ClinicalEncounterDetail> => {
     return apiClient.patch<ClinicalEncounterDetail>(`/clinical-encounters/${id}`, data);
+  },
+
+  finalizeClinicalEncounter: async (id: string, data: { version: number }): Promise<ClinicalEncounterDetail> => {
+    return apiClient.post<ClinicalEncounterDetail>(`/clinical-encounters/${id}/finalize`, data);
   }
 };

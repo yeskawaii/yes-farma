@@ -40,6 +40,8 @@ export function EncounterEditor() {
   });
 
   const [isSaving, setIsSaving] = useState(false);
+  const [isFinalizing, setIsFinalizing] = useState(false);
+  const [showFinalizeConfirm, setShowFinalizeConfirm] = useState(false);
   const [saveError, setSaveError] = useState<{ message: string; isConflict: boolean } | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
@@ -161,6 +163,56 @@ export function EncounterEditor() {
     } finally {
       if (currentRequestId === requestIdRef.current) {
         setIsSaving(false);
+      }
+    }
+  };
+
+  const handleFinalize = async () => {
+    if (!data || !encounterId) return;
+
+    setIsFinalizing(true);
+    setSaveError(null);
+    setSaveMessage(null);
+
+    requestIdRef.current += 1;
+    const currentRequestId = requestIdRef.current;
+
+    try {
+      const updated = await clinicalEncountersApi.finalizeClinicalEncounter(encounterId, {
+        version: data.version
+      });
+
+      if (currentRequestId === requestIdRef.current) {
+        setData(updated);
+        setShowFinalizeConfirm(false);
+        setSaveMessage('Consulta finalizada');
+        setTimeout(() => setSaveMessage(null), 3000);
+      }
+    } catch (err: unknown) {
+      if (currentRequestId === requestIdRef.current) {
+        if (err instanceof ApiClientError && err.status === 409) {
+          setSaveError({
+            message: 'No fue posible finalizar porque la consulta cambió o ya fue finalizada en otro lugar. Recarga la información antes de continuar.',
+            isConflict: true
+          });
+          setShowFinalizeConfirm(false);
+        } else if (err instanceof ApiClientError && err.status === 403) {
+          setSaveError({
+            message: 'No tienes permisos para finalizar esta consulta.',
+            isConflict: false
+          });
+          setShowFinalizeConfirm(false);
+        } else {
+          setSaveError({
+            message: 'No fue posible finalizar la consulta. Intenta nuevamente.',
+            isConflict: false
+          });
+          setShowFinalizeConfirm(false);
+        }
+      }
+    } finally {
+      if (currentRequestId === requestIdRef.current) {
+        setIsFinalizing(false);
       }
     }
   };
@@ -336,6 +388,20 @@ export function EncounterEditor() {
               </div>
             </div>
           )}
+
+          {data.status === 'FINALIZED' && data.finalizedAt && (
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Finalizada</p>
+              <p className="text-slate-900 font-medium">{formatDate(data.finalizedAt)}</p>
+            </div>
+          )}
+
+          {data.status === 'FINALIZED' && data.finalizedBy && (
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Finalizada por</p>
+              <p className="text-slate-900 font-medium">{data.finalizedBy.displayName}</p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -394,33 +460,89 @@ export function EncounterEditor() {
         )}
 
         {data.status === 'DRAFT' && (
-          <div className="flex items-center gap-4 mt-8 pt-6 border-t border-slate-200">
-            <button
-              onClick={() => void handleSave()}
-              disabled={!getChanges() || isSaving}
-              className="inline-flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed transition-all font-medium text-sm"
-            >
-              {isSaving ? (
-                <>
-                  <RefreshCw size={18} className="animate-spin" />
-                  Guardando...
-                </>
-              ) : (
-                <>
-                  <CheckCircle size={18} />
-                  Guardar borrador
-                </>
+          <div className="flex flex-col gap-4 mt-8 pt-6 border-t border-slate-200">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => void handleSave()}
+                disabled={!getChanges() || isSaving || isFinalizing}
+                className="inline-flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed transition-all font-medium text-sm"
+              >
+                {isSaving ? (
+                  <>
+                    <RefreshCw size={18} className="animate-spin" />
+                    Guardando...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle size={18} />
+                    Guardar borrador
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={() => setShowFinalizeConfirm(true)}
+                disabled={isSaving || isFinalizing || getChanges() !== null}
+                className="inline-flex items-center gap-2 px-6 py-2.5 bg-slate-800 text-white rounded-xl hover:bg-slate-900 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed transition-all font-medium text-sm"
+              >
+                Finalizar consulta
+              </button>
+
+              {saveMessage && !isSaving && !isFinalizing && (
+                <span className="text-sm font-medium text-emerald-600 flex items-center gap-1.5 animate-in fade-in slide-in-from-left-2">
+                  <CheckCircle size={16} />
+                  {saveMessage}
+                </span>
               )}
-            </button>
-            {saveMessage && !isSaving && (
-              <span className="text-sm font-medium text-emerald-600 flex items-center gap-1.5 animate-in fade-in slide-in-from-left-2">
-                <CheckCircle size={16} />
-                {saveMessage}
-              </span>
+            </div>
+
+            {getChanges() !== null && (
+              <p className="text-sm text-amber-700 bg-amber-50 px-4 py-2 rounded-lg inline-flex self-start border border-amber-200">
+                Guarda los cambios pendientes antes de finalizar la consulta.
+              </p>
             )}
           </div>
         )}
       </div>
+
+      {showFinalizeConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95">
+            <div className="p-6">
+              <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mb-4">
+                <AlertCircle size={24} />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 mb-2">Finalizar consulta</h3>
+              <p className="text-slate-600 text-sm">
+                Al finalizar la consulta, el registro clínico quedará en modo de solo lectura. Las correcciones posteriores deberán realizarse mediante una enmienda.
+              </p>
+            </div>
+            <div className="bg-slate-50 px-6 py-4 flex items-center justify-end gap-3">
+              <button
+                onClick={() => setShowFinalizeConfirm(false)}
+                disabled={isFinalizing}
+                className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 disabled:opacity-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => void handleFinalize()}
+                disabled={isFinalizing}
+                className="px-4 py-2 text-sm font-medium text-white bg-slate-900 rounded-lg hover:bg-slate-800 disabled:opacity-50 transition-colors inline-flex items-center gap-2"
+              >
+                {isFinalizing ? (
+                  <>
+                    <RefreshCw size={16} className="animate-spin" />
+                    Finalizando...
+                  </>
+                ) : (
+                  'Finalizar consulta'
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
