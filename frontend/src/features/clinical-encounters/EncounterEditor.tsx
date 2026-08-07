@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, FileText, AlertCircle, RefreshCw, Calendar, Clock, CheckCircle } from 'lucide-react';
 import { clinicalEncountersApi } from './api';
-import type { ClinicalEncounterDetail } from './types';
+import type { ClinicalEncounterDetail, VitalSignsInput } from './types';
 import { ApiClientError } from '../../core/api/client';
 
 const narrativeFields = [
@@ -21,6 +21,21 @@ type NarrativeState = Record<NarrativeField, string>;
 
 type NarrativeChanges = Partial<Pick<ClinicalEncounterDetail, NarrativeField>>;
 
+type DraftChanges = NarrativeChanges & {
+  vitalSigns?: VitalSignsInput | null;
+};
+
+type VitalSignsState = {
+  systolicBloodPressure: string;
+  diastolicBloodPressure: string;
+  heartRate: string;
+  respiratoryRate: string;
+  temperatureCelsius: string;
+  oxygenSaturationPercent: string;
+  weightKg: string;
+  heightCm: string;
+};
+
 export function EncounterEditor() {
   const { patientId, encounterId } = useParams<{ patientId: string; encounterId: string }>();
   const navigate = useNavigate();
@@ -37,6 +52,17 @@ export function EncounterEditor() {
     physicalExamination: '',
     indications: '',
     clinicalNotes: ''
+  });
+
+  const [vitalSignsForm, setVitalSignsForm] = useState<VitalSignsState>({
+    systolicBloodPressure: '',
+    diastolicBloodPressure: '',
+    heartRate: '',
+    respiratoryRate: '',
+    temperatureCelsius: '',
+    oxygenSaturationPercent: '',
+    weightKg: '',
+    heightCm: ''
   });
 
   const [isSaving, setIsSaving] = useState(false);
@@ -94,6 +120,16 @@ export function EncounterEditor() {
         indications: data.indications ?? '',
         clinicalNotes: data.clinicalNotes ?? ''
       });
+      setVitalSignsForm({
+        systolicBloodPressure: data.vitalSigns?.systolicBloodPressure?.toString() ?? '',
+        diastolicBloodPressure: data.vitalSigns?.diastolicBloodPressure?.toString() ?? '',
+        heartRate: data.vitalSigns?.heartRate?.toString() ?? '',
+        respiratoryRate: data.vitalSigns?.respiratoryRate?.toString() ?? '',
+        temperatureCelsius: data.vitalSigns?.temperatureCelsius ?? '',
+        oxygenSaturationPercent: data.vitalSigns?.oxygenSaturationPercent?.toString() ?? '',
+        weightKg: data.vitalSigns?.weightKg ?? '',
+        heightCm: data.vitalSigns?.heightCm?.toString() ?? ''
+      });
     }
   }, [data]);
 
@@ -103,26 +139,97 @@ export function EncounterEditor() {
     return trimmed === '' ? null : trimmed;
   };
 
-  const getChanges = (): NarrativeChanges | null => {
-    if (!data) return null;
+  const isSemanticallyEqual = (textValue: string, originalNumber: number | string | null | undefined): boolean => {
+    const trimmed = textValue.trim();
+    if (trimmed === '') {
+      return originalNumber === null || originalNumber === undefined;
+    }
+    const parsedText = Number(trimmed);
+    if (!Number.isFinite(parsedText)) {
+      return false; // If text is "abc", it can't be equal to original number or null
+    }
+    const originalValue = originalNumber === null || originalNumber === undefined ? null : Number(originalNumber);
+    return originalValue === parsedText;
+  };
 
-    const changes: NarrativeChanges = {};
+  const hasVitalSignsChanges = (): boolean => {
+    if (!data) return false;
+    const original = data.vitalSigns;
+    if (!isSemanticallyEqual(vitalSignsForm.systolicBloodPressure, original?.systolicBloodPressure)) return true;
+    if (!isSemanticallyEqual(vitalSignsForm.diastolicBloodPressure, original?.diastolicBloodPressure)) return true;
+    if (!isSemanticallyEqual(vitalSignsForm.heartRate, original?.heartRate)) return true;
+    if (!isSemanticallyEqual(vitalSignsForm.respiratoryRate, original?.respiratoryRate)) return true;
+    if (!isSemanticallyEqual(vitalSignsForm.temperatureCelsius, original?.temperatureCelsius)) return true;
+    if (!isSemanticallyEqual(vitalSignsForm.oxygenSaturationPercent, original?.oxygenSaturationPercent)) return true;
+    if (!isSemanticallyEqual(vitalSignsForm.weightKg, original?.weightKg)) return true;
+    if (!isSemanticallyEqual(vitalSignsForm.heightCm, original?.heightCm)) return true;
+    return false;
+  };
 
-    for (const field of narrativeFields) {
-      const original = normalizeValue(data[field]);
-      const current = normalizeValue(formData[field]);
+  const validateVitalSignsForm = (form: VitalSignsState): string | null => {
+    const checkNumeric = (val: string, fieldName: string, min: number, max: number, isInt: boolean = false): string | null => {
+      const trimmed = val.trim();
+      if (trimmed === '') return null;
+      const parsed = Number(trimmed);
+      if (!Number.isFinite(parsed)) return `${fieldName} debe ser un número válido.`;
+      if (isInt && !Number.isInteger(parsed)) return `${fieldName} no acepta decimales.`;
+      if (parsed < min || parsed > max) return `${fieldName} debe estar entre ${min} y ${max}.`;
+      return null;
+    };
 
-      if (original !== current) {
-        changes[field] = current;
+    let err = checkNumeric(form.systolicBloodPressure, 'La presión sistólica', 30, 300, true);
+    if (err) return err;
+    err = checkNumeric(form.diastolicBloodPressure, 'La presión diastólica', 20, 200, true);
+    if (err) return err;
+
+    const sysTrim = form.systolicBloodPressure.trim();
+    const diaTrim = form.diastolicBloodPressure.trim();
+    if (sysTrim !== '' && diaTrim !== '') {
+      const sys = Number(sysTrim);
+      const dia = Number(diaTrim);
+      if (Number.isFinite(sys) && Number.isFinite(dia) && sys <= dia) {
+        return 'La presión sistólica debe ser mayor que la diastólica.';
       }
     }
 
-    return Object.keys(changes).length > 0 ? changes : null;
+    err = checkNumeric(form.heartRate, 'La frecuencia cardiaca', 20, 300, true);
+    if (err) return err;
+    err = checkNumeric(form.respiratoryRate, 'La frecuencia respiratoria', 5, 80, true);
+    if (err) return err;
+    err = checkNumeric(form.temperatureCelsius, 'La temperatura', 25, 45, false);
+    if (err) return err;
+    err = checkNumeric(form.oxygenSaturationPercent, 'La saturación de oxígeno', 0, 100, true);
+    if (err) return err;
+    err = checkNumeric(form.weightKg, 'El peso', 0.5, 500, false);
+    if (err) return err;
+    err = checkNumeric(form.heightCm, 'La estatura', 20, 300, true);
+    if (err) return err;
+
+    return null;
+  };
+
+  const hasNarrativeChanges = (): boolean => {
+    if (!data) return false;
+    for (const field of narrativeFields) {
+      if (normalizeValue(data[field]) !== normalizeValue(formData[field])) return true;
+    }
+    return false;
+  };
+
+  const hasAnyChanges = (): boolean => {
+    return hasNarrativeChanges() || hasVitalSignsChanges();
   };
 
   const handleSave = async () => {
-    const changes = getChanges();
-    if (!changes || !data || !encounterId) return;
+    if (!data || !encounterId || !hasAnyChanges()) return;
+
+    if (hasVitalSignsChanges()) {
+      const vErr = validateVitalSignsForm(vitalSignsForm);
+      if (vErr) {
+        setSaveError({ message: vErr, isConflict: false });
+        return;
+      }
+    }
 
     setIsSaving(true);
     setSaveError(null);
@@ -134,6 +241,34 @@ export function EncounterEditor() {
     const currentRequestId = requestIdRef.current;
 
     try {
+      const changes: DraftChanges = {};
+
+      for (const field of narrativeFields) {
+        const original = normalizeValue(data[field]);
+        const current = normalizeValue(formData[field]);
+        if (original !== current) {
+          changes[field] = current;
+        }
+      }
+
+      if (hasVitalSignsChanges()) {
+        const constructNumber = (val: string) => val.trim() === '' ? null : Number(val.trim());
+
+        const currentVitals: VitalSignsInput = {
+          systolicBloodPressure: constructNumber(vitalSignsForm.systolicBloodPressure),
+          diastolicBloodPressure: constructNumber(vitalSignsForm.diastolicBloodPressure),
+          heartRate: constructNumber(vitalSignsForm.heartRate),
+          respiratoryRate: constructNumber(vitalSignsForm.respiratoryRate),
+          temperatureCelsius: constructNumber(vitalSignsForm.temperatureCelsius),
+          oxygenSaturationPercent: constructNumber(vitalSignsForm.oxygenSaturationPercent),
+          weightKg: constructNumber(vitalSignsForm.weightKg),
+          heightCm: constructNumber(vitalSignsForm.heightCm)
+        };
+
+        const isAllNull = Object.values(currentVitals).every(val => val === null);
+        changes.vitalSigns = isAllNull ? null : currentVitals;
+      }
+
       const payload = {
         version: data.version,
         ...changes
@@ -303,6 +438,51 @@ export function EncounterEditor() {
     </div>
   );
 
+  const renderReadonlyVital = (label: string, value: number | string | null | undefined, unit: string) => (
+    <div>
+      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">{label}</p>
+      {value !== null && value !== undefined && value !== '' ? (
+        <p className="text-slate-900 font-medium">{value} <span className="text-slate-500 text-sm ml-0.5">{unit}</span></p>
+      ) : (
+        <p className="text-slate-400 italic text-sm">Sin registro</p>
+      )}
+    </div>
+  );
+
+  const renderVitalInput = (
+    label: string,
+    field: keyof VitalSignsState,
+    unit: string,
+    min?: number,
+    max?: number,
+    step?: string
+  ) => (
+    <div>
+      <label className="block text-sm font-semibold text-slate-700 mb-2" htmlFor={field}>
+        {label}
+      </label>
+      <div className="relative">
+        <input
+          id={field}
+          type="number"
+          min={min}
+          max={max}
+          step={step}
+          value={vitalSignsForm[field]}
+          onChange={(e) => {
+            setSaveError(null);
+            setVitalSignsForm((prev) => ({ ...prev, [field]: e.target.value }));
+          }}
+          disabled={isSaving}
+          className="w-full bg-white border border-slate-300 rounded-xl pl-4 pr-12 py-2.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed"
+        />
+        <div className="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none">
+          <span className="text-slate-400 text-sm font-medium">{unit}</span>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="flex flex-col gap-6 animate-slide-up">
       {/* Top Bar */}
@@ -423,6 +603,38 @@ export function EncounterEditor() {
         </div>
       )}
 
+      {/* Vitals Data Form */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+        <h2 className="text-lg font-bold text-slate-900 mb-6">Signos vitales</h2>
+        {data.status === 'DRAFT' ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {renderVitalInput('Presión sistólica', 'systolicBloodPressure', 'mmHg', 30, 300)}
+            {renderVitalInput('Presión diastólica', 'diastolicBloodPressure', 'mmHg', 20, 200)}
+            {renderVitalInput('Frecuencia cardiaca', 'heartRate', 'lpm', 20, 300)}
+            {renderVitalInput('Frecuencia respiratoria', 'respiratoryRate', 'rpm', 5, 80)}
+            {renderVitalInput('Temperatura', 'temperatureCelsius', '°C', 25, 45, '0.1')}
+            {renderVitalInput('Saturación de oxígeno', 'oxygenSaturationPercent', '%', 0, 100)}
+            {renderVitalInput('Peso', 'weightKg', 'kg', 0.5, 500, '0.1')}
+            {renderVitalInput('Estatura', 'heightCm', 'cm', 20, 300)}
+          </div>
+        ) : (
+          !data.vitalSigns ? (
+            <p className="text-sm text-slate-500 italic">Sin signos vitales registrados</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-y-6 gap-x-8">
+              {renderReadonlyVital('Presión sistólica', data.vitalSigns.systolicBloodPressure, 'mmHg')}
+              {renderReadonlyVital('Presión diastólica', data.vitalSigns.diastolicBloodPressure, 'mmHg')}
+              {renderReadonlyVital('Frecuencia cardiaca', data.vitalSigns.heartRate, 'lpm')}
+              {renderReadonlyVital('Frecuencia respiratoria', data.vitalSigns.respiratoryRate, 'rpm')}
+              {renderReadonlyVital('Temperatura', data.vitalSigns.temperatureCelsius, '°C')}
+              {renderReadonlyVital('Saturación de oxígeno', data.vitalSigns.oxygenSaturationPercent, '%')}
+              {renderReadonlyVital('Peso', data.vitalSigns.weightKg, 'kg')}
+              {renderReadonlyVital('Estatura', data.vitalSigns.heightCm, 'cm')}
+            </div>
+          )
+        )}
+      </div>
+
       {/* Clinical Data Forms */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
         <h2 className="text-lg font-bold text-slate-900 mb-6">Consulta</h2>
@@ -464,7 +676,7 @@ export function EncounterEditor() {
             <div className="flex items-center gap-4">
               <button
                 onClick={() => void handleSave()}
-                disabled={!getChanges() || isSaving || isFinalizing}
+                disabled={!hasAnyChanges() || isSaving || isFinalizing}
                 className="inline-flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed transition-all font-medium text-sm"
               >
                 {isSaving ? (
@@ -482,7 +694,7 @@ export function EncounterEditor() {
 
               <button
                 onClick={() => setShowFinalizeConfirm(true)}
-                disabled={isSaving || isFinalizing || getChanges() !== null}
+                disabled={isSaving || isFinalizing || hasAnyChanges()}
                 className="inline-flex items-center gap-2 px-6 py-2.5 bg-slate-800 text-white rounded-xl hover:bg-slate-900 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed transition-all font-medium text-sm"
               >
                 Finalizar consulta
@@ -496,7 +708,7 @@ export function EncounterEditor() {
               )}
             </div>
 
-            {getChanges() !== null && (
+            {hasAnyChanges() && (
               <p className="text-sm text-amber-700 bg-amber-50 px-4 py-2 rounded-lg inline-flex self-start border border-amber-200">
                 Guarda los cambios pendientes antes de finalizar la consulta.
               </p>
