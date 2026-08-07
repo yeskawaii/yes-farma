@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, FileText, AlertCircle, RefreshCw, Calendar, Clock, CheckCircle } from 'lucide-react';
 import { clinicalEncountersApi } from './api';
-import type { ClinicalEncounterDetail, VitalSignsInput } from './types';
+import type { ClinicalEncounterDetail, VitalSignsInput, DiagnosisInput } from './types';
 import { ApiClientError } from '../../core/api/client';
 
 const narrativeFields = [
@@ -23,6 +23,7 @@ type NarrativeChanges = Partial<Pick<ClinicalEncounterDetail, NarrativeField>>;
 
 type DraftChanges = NarrativeChanges & {
   vitalSigns?: VitalSignsInput | null;
+  diagnoses?: DiagnosisInput[];
 };
 
 type VitalSignsState = {
@@ -34,6 +35,13 @@ type VitalSignsState = {
   oxygenSaturationPercent: string;
   weightKg: string;
   heightCm: string;
+};
+
+type DiagnosisFormState = {
+  _uiId: string;
+  description: string;
+  code: string;
+  isPrimary: boolean;
 };
 
 export function EncounterEditor() {
@@ -64,6 +72,8 @@ export function EncounterEditor() {
     weightKg: '',
     heightCm: ''
   });
+
+  const [diagnosesForm, setDiagnosesForm] = useState<DiagnosisFormState[]>([]);
 
   const [isSaving, setIsSaving] = useState(false);
   const [isFinalizing, setIsFinalizing] = useState(false);
@@ -130,6 +140,15 @@ export function EncounterEditor() {
         weightKg: data.vitalSigns?.weightKg ?? '',
         heightCm: data.vitalSigns?.heightCm?.toString() ?? ''
       });
+
+      setDiagnosesForm(
+        (data.diagnoses || []).map((d) => ({
+          _uiId: crypto.randomUUID(),
+          description: d.description,
+          code: d.code ?? '',
+          isPrimary: d.isPrimary
+        }))
+      );
     }
   }, [data]);
 
@@ -208,6 +227,50 @@ export function EncounterEditor() {
     return null;
   };
 
+  const hasDiagnosesChanges = (): boolean => {
+    if (!data) return false;
+    const original = data.diagnoses || [];
+
+    if (original.length !== diagnosesForm.length) return true;
+
+    for (let i = 0; i < original.length; i++) {
+      const orig = original[i];
+      const form = diagnosesForm[i];
+
+      if (orig.description.trim() !== form.description.trim()) return true;
+      if ((orig.code?.trim() || '') !== form.code.trim()) return true;
+      if (orig.isPrimary !== form.isPrimary) return true;
+    }
+
+    return false;
+  };
+
+  const validateDiagnosesForm = (form: DiagnosisFormState[]): string | null => {
+    let primaryCount = 0;
+    for (let i = 0; i < form.length; i++) {
+      const d = form[i];
+      if (d.description.trim() === '') {
+        return `El diagnóstico #${i + 1} requiere una descripción.`;
+      }
+      if (d.description.trim().length > 1000) {
+        return `La descripción del diagnóstico #${i + 1} excede los 1000 caracteres.`;
+      }
+      if (d.code.trim().length > 64) {
+        return `El código del diagnóstico #${i + 1} excede los 64 caracteres.`;
+      }
+      if (d.isPrimary) {
+        primaryCount++;
+      }
+    }
+    if (primaryCount > 1) {
+      return 'Solo puede existir un diagnóstico principal.';
+    }
+    if (form.length > 50) {
+      return 'El número máximo de diagnósticos es 50.';
+    }
+    return null;
+  };
+
   const hasNarrativeChanges = (): boolean => {
     if (!data) return false;
     for (const field of narrativeFields) {
@@ -217,7 +280,7 @@ export function EncounterEditor() {
   };
 
   const hasAnyChanges = (): boolean => {
-    return hasNarrativeChanges() || hasVitalSignsChanges();
+    return hasNarrativeChanges() || hasVitalSignsChanges() || hasDiagnosesChanges();
   };
 
   const handleSave = async () => {
@@ -227,6 +290,14 @@ export function EncounterEditor() {
       const vErr = validateVitalSignsForm(vitalSignsForm);
       if (vErr) {
         setSaveError({ message: vErr, isConflict: false });
+        return;
+      }
+    }
+
+    if (hasDiagnosesChanges()) {
+      const dErr = validateDiagnosesForm(diagnosesForm);
+      if (dErr) {
+        setSaveError({ message: dErr, isConflict: false });
         return;
       }
     }
@@ -267,6 +338,15 @@ export function EncounterEditor() {
 
         const isAllNull = Object.values(currentVitals).every(val => val === null);
         changes.vitalSigns = isAllNull ? null : currentVitals;
+      }
+
+      if (hasDiagnosesChanges()) {
+        changes.diagnoses = diagnosesForm.map((d, index) => ({
+          description: d.description.trim(),
+          code: d.code.trim() === '' ? null : d.code.trim(),
+          isPrimary: d.isPrimary,
+          sortOrder: index
+        }));
       }
 
       const payload = {
@@ -483,6 +563,48 @@ export function EncounterEditor() {
     </div>
   );
 
+  const handleDiagnosisPrimaryChange = (index: number, checked: boolean) => {
+    setDiagnosesForm(prev => prev.map((d, i) => {
+      if (i === index) return { ...d, isPrimary: checked };
+      if (checked) return { ...d, isPrimary: false };
+      return d;
+    }));
+  };
+
+  const moveDiagnosisUp = (index: number) => {
+    if (index === 0) return;
+    setDiagnosesForm(prev => {
+      const next = [...prev];
+      [next[index - 1], next[index]] = [next[index], next[index - 1]];
+      return next;
+    });
+  };
+
+  const moveDiagnosisDown = (index: number) => {
+    if (index === diagnosesForm.length - 1) return;
+    setDiagnosesForm(prev => {
+      const next = [...prev];
+      [next[index], next[index + 1]] = [next[index + 1], next[index]];
+      return next;
+    });
+  };
+
+  const removeDiagnosis = (index: number) => {
+    setDiagnosesForm(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const addDiagnosis = () => {
+    setDiagnosesForm(prev => [
+      ...prev,
+      {
+        _uiId: crypto.randomUUID(),
+        description: '',
+        code: '',
+        isPrimary: false
+      }
+    ]);
+  };
+
   return (
     <div className="flex flex-col gap-6 animate-slide-up">
       {/* Top Bar */}
@@ -669,6 +791,138 @@ export function EncounterEditor() {
             {renderReadonlyField('Indicaciones', data.indications)}
             {renderReadonlyField('Notas clínicas', data.clinicalNotes)}
           </>
+        )}
+      </div>
+
+      {/* Diagnoses Form */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-lg font-bold text-slate-900">Diagnósticos</h2>
+          {data.status === 'DRAFT' && (
+            <button
+              onClick={addDiagnosis}
+              disabled={isSaving || isFinalizing || diagnosesForm.length >= 50}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              + Agregar diagnóstico
+            </button>
+          )}
+        </div>
+
+        {data.status === 'DRAFT' ? (
+          diagnosesForm.length === 0 ? (
+            <p className="text-sm text-slate-500 italic text-center py-4">Sin diagnósticos registrados</p>
+          ) : (
+            <div className="space-y-4">
+              {diagnosesForm.map((d, index) => (
+                <div key={d._uiId} className="flex flex-col md:flex-row gap-4 p-4 border border-slate-200 rounded-xl bg-slate-50 relative group">
+                  {/* Actions column */}
+                  <div className="flex md:flex-col gap-2 items-center shrink-0">
+                    <button
+                      onClick={() => moveDiagnosisUp(index)}
+                      disabled={index === 0 || isSaving}
+                      className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-md disabled:opacity-30 transition-colors"
+                      title="Mover arriba"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m18 15-6-6-6 6"/></svg>
+                    </button>
+                    <button
+                      onClick={() => moveDiagnosisDown(index)}
+                      disabled={index === diagnosesForm.length - 1 || isSaving}
+                      className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-md disabled:opacity-30 transition-colors"
+                      title="Mover abajo"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                    </button>
+                    <button
+                      onClick={() => removeDiagnosis(index)}
+                      disabled={isSaving}
+                      className="p-1.5 text-red-400 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors mt-auto"
+                      title="Eliminar"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+                    </button>
+                  </div>
+
+                  {/* Content column */}
+                  <div className="flex-1 flex flex-col gap-4">
+                    <div className="flex flex-col md:flex-row gap-4">
+                      <div className="flex-1">
+                        <label className="block text-xs font-semibold text-slate-700 mb-1" htmlFor={`desc-${d._uiId}`}>
+                          Descripción <span className="text-red-500">*</span>
+                        </label>
+                        <textarea
+                          id={`desc-${d._uiId}`}
+                          value={d.description}
+                          onChange={(e) => {
+                            setSaveError(null);
+                            setDiagnosesForm(prev => prev.map((item, i) => i === index ? { ...item, description: e.target.value } : item));
+                          }}
+                          disabled={isSaving}
+                          maxLength={1000}
+                          className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-y min-h-[60px] disabled:bg-slate-100 disabled:text-slate-500"
+                        />
+                      </div>
+                      <div className="w-full md:w-48 shrink-0">
+                        <label className="block text-xs font-semibold text-slate-700 mb-1" htmlFor={`code-${d._uiId}`}>
+                          Código
+                        </label>
+                        <input
+                          id={`code-${d._uiId}`}
+                          type="text"
+                          value={d.code}
+                          onChange={(e) => {
+                            setSaveError(null);
+                            setDiagnosesForm(prev => prev.map((item, i) => i === index ? { ...item, code: e.target.value } : item));
+                          }}
+                          disabled={isSaving}
+                          maxLength={64}
+                          className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 disabled:bg-slate-100 disabled:text-slate-500"
+                        />
+                      </div>
+                    </div>
+                    <label className="flex items-center gap-2 text-sm text-slate-700 font-medium cursor-pointer w-max">
+                      <input
+                        type="checkbox"
+                        checked={d.isPrimary}
+                        onChange={(e) => {
+                          setSaveError(null);
+                          handleDiagnosisPrimaryChange(index, e.target.checked);
+                        }}
+                        disabled={isSaving}
+                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500/20 disabled:opacity-50 w-4 h-4"
+                      />
+                      Diagnóstico principal
+                    </label>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        ) : (
+          !data.diagnoses || data.diagnoses.length === 0 ? (
+            <p className="text-sm text-slate-500 italic">Sin diagnósticos registrados</p>
+          ) : (
+            <div className="space-y-4">
+              {data.diagnoses.map((d) => (
+                <div key={d.id} className="p-4 border border-slate-200 rounded-xl bg-slate-50 flex flex-col gap-2">
+                  <div className="flex items-start gap-2">
+                    {d.isPrimary && (
+                      <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700 border border-blue-200">
+                        Principal
+                      </span>
+                    )}
+                    <p className="text-sm text-slate-900 font-medium leading-relaxed flex-1 whitespace-pre-wrap">{d.description}</p>
+                  </div>
+                  {d.code && (
+                    <div className="text-xs text-slate-500 font-mono mt-1">
+                      Código: <span className="bg-white border border-slate-200 px-1.5 py-0.5 rounded">{d.code}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )
         )}
 
         {data.status === 'DRAFT' && (
