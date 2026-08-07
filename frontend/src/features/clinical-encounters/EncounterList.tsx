@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, AlertCircle, RefreshCw, Calendar, CheckCircle, Clock, Plus } from 'lucide-react';
+import { FileText, AlertCircle, RefreshCw, Calendar, CheckCircle, Clock, Plus, Pencil, Eye } from 'lucide-react';
 import { clinicalEncountersApi } from './api';
 import type { ClinicalEncounterListItem, ClinicalEncounterStatus } from './types';
 import { useAuth } from '../../core/auth/AuthProvider';
@@ -21,6 +21,7 @@ export function EncounterList({ patientId }: EncounterListProps) {
   const [createError, setCreateError] = useState<string | null>(null);
 
   const canCreate = activeRole === 'OWNER' || activeRole === 'PROFESSIONAL';
+  const canOpen = activeRole === 'OWNER' || activeRole === 'PROFESSIONAL';
 
   const requestIdRef = useRef(0);
 
@@ -198,6 +199,27 @@ export function EncounterList({ patientId }: EncounterListProps) {
                   )}
                 </div>
               </div>
+
+              {canOpen && (
+                <div className="flex sm:shrink-0 mt-2 sm:mt-0">
+                  <button
+                    onClick={() => navigate(`/patients/${patientId}/encounters/${encounter.id}`)}
+                    className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors w-full sm:w-auto justify-center focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  >
+                    {encounter.status === 'DRAFT' ? (
+                      <>
+                        <Pencil size={16} />
+                        Continuar borrador
+                      </>
+                    ) : (
+                      <>
+                        <Eye size={16} />
+                        Ver consulta
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>
