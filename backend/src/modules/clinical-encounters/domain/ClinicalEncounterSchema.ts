@@ -234,3 +234,10 @@ export type ListClinicalEncountersInput =
 
 export type UpdateClinicalEncounterInput =
   z.infer<typeof updateClinicalEncounterSchema>;
+
+export const finalizeClinicalEncounterSchema = z.object({
+  version: z.number().int().min(1, 'version must be >= 1')
+}).strict();
+
+export type FinalizeClinicalEncounterInput =
+  z.infer<typeof finalizeClinicalEncounterSchema>;

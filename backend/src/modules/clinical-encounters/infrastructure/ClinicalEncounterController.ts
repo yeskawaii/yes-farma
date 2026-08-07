@@ -3,7 +3,8 @@ import { ClinicalEncounterService, IClinicalEncounterRepository } from '../appli
 import {
   createClinicalEncounterSchema,
   listClinicalEncountersSchema,
-  updateClinicalEncounterSchema
+  updateClinicalEncounterSchema,
+  finalizeClinicalEncounterSchema
 } from '../domain/ClinicalEncounterSchema';
 import { AuthContext } from '../../../middlewares/auth';
 import { z } from 'zod';
@@ -93,6 +94,41 @@ export class ClinicalEncounterController {
           context.role,
           input
         );
+
+      res.json(result);
+    } catch (error: unknown) {
+      if (error instanceof z.ZodError) {
+        return next(
+          new AppError(
+            'VALIDATION_ERROR',
+            'Datos inválidos',
+            400
+          )
+        );
+      }
+
+      next(error);
+    }
+  }
+
+  static async finalize(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      const context = getAuthCtx(req);
+      const id = z.string().uuid().parse(req.params.id);
+      const input = finalizeClinicalEncounterSchema.parse(req.body);
+
+      const result = await clinicalEncounterService.finalizeEncounter(
+        context.clinicId,
+        id,
+        context.membershipId,
+        context.userId,
+        context.role,
+        input.version
+      );
 
       res.json(result);
     } catch (error: unknown) {

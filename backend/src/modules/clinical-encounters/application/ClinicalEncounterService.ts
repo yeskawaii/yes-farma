@@ -909,4 +909,158 @@ export class ClinicalEncounterService {
       409
     );
   }
+
+  async finalizeEncounter(
+    clinicId: string,
+    id: string,
+    membershipId: string,
+    actorUserId: string,
+    actorRole: string,
+    version: number
+  ) {
+    if (actorRole !== 'OWNER' && actorRole !== 'PROFESSIONAL') {
+      throw new AppError(
+        'FORBIDDEN',
+        'Rol no autorizado para finalizar encuentros clínicos',
+        403
+      );
+    }
+
+    const executeTransaction = async (): Promise<void> => {
+      await this.prisma.$transaction(
+        async (tx) => {
+          const encounter = await tx.clinicalEncounter.findFirst({
+            where: {
+              id,
+              clinicId
+            },
+            select: {
+              id: true,
+              status: true,
+              version: true,
+              professionalMembershipId: true
+            }
+          });
+
+          if (!encounter) {
+            throw new AppError(
+              'NOT_FOUND',
+              'Encuentro no encontrado.',
+              404
+            );
+          }
+
+          if (encounter.status === 'FINALIZED') {
+            throw new AppError(
+              'CLINICAL_ENCOUNTER_FINALIZED',
+              'El encuentro ya está finalizado.',
+              409
+            );
+          }
+
+          if (encounter.professionalMembershipId !== membershipId) {
+            throw new AppError(
+              'FORBIDDEN',
+              'Solo el profesional responsable puede finalizar este encuentro.',
+              403
+            );
+          }
+
+          if (encounter.version !== version) {
+            throw new AppError(
+              'CLINICAL_ENCOUNTER_VERSION_CONFLICT',
+              'Conflicto de versión. El encuentro ha sido modificado por otro proceso.',
+              409
+            );
+          }
+
+          const updateResult = await tx.clinicalEncounter.updateMany({
+            where: {
+              id,
+              clinicId,
+              status: 'DRAFT',
+              professionalMembershipId: membershipId,
+              version
+            },
+            data: {
+              status: 'FINALIZED',
+              finalizedAt: new Date(),
+              finalizedByMembershipId: membershipId,
+              version: {
+                increment: 1
+              },
+              updatedByMembershipId: membershipId
+            }
+          });
+
+          if (updateResult.count === 0) {
+            throw new AppError(
+              'CLINICAL_ENCOUNTER_VERSION_CONFLICT',
+              'Conflicto de versión. El encuentro ha sido modificado por otro proceso.',
+              409
+            );
+          }
+
+          await tx.auditEvent.create({
+            data: {
+              clinicId,
+              actorUserId,
+              action: 'CLINICAL_ENCOUNTER_FINALIZED',
+              entityType: 'ClinicalEncounter',
+              entityId: id,
+              success: true,
+              metadata: {
+                status: 'FINALIZED',
+                previousStatus: 'DRAFT',
+                version: version + 1
+              }
+            }
+          });
+        },
+        {
+          isolationLevel: 'Serializable'
+        }
+      );
+    };
+
+    let attempts = 0;
+
+    while (attempts < 3) {
+      try {
+        await executeTransaction();
+
+        return await this.getEncounterById(
+          clinicId,
+          id,
+          actorRole
+        );
+      } catch (error: unknown) {
+        if (
+          error instanceof
+            PrismaNamespace.PrismaClientKnownRequestError &&
+          error.code === 'P2034'
+        ) {
+          attempts += 1;
+
+          if (attempts >= 3) {
+            throw new AppError(
+              'CONCURRENCY_ERROR',
+              'No se pudo finalizar el encuentro debido a alta concurrencia. Intente de nuevo.',
+              409
+            );
+          }
+
+          continue;
+        }
+
+        throw error;
+      }
+    }
+
+    throw new AppError(
+      'CONCURRENCY_ERROR',
+      'No se pudo finalizar el encuentro debido a alta concurrencia.',
+      409
+    );
+  }
 }
