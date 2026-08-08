@@ -4,6 +4,7 @@ import { AppError } from '../../../shared/errors/AppError';
 import {
   CreateClinicalEncounterInput,
   ListClinicalEncountersInput,
+  ListClinicalRecordsInput,
   UpdateClinicalEncounterInput,
   CreateClinicalEncounterAmendmentInput
 } from '../domain/ClinicalEncounterSchema';
@@ -212,6 +213,122 @@ export class ClinicalEncounterService {
       }
     }
     throw new AppError('CONCURRENCY_ERROR', 'No se pudo crear el encuentro debido a alta concurrencia.', 409);
+  }
+
+  async listRecords(ctx: { clinicId: string; membershipId: string; role: string }, input: ListClinicalRecordsInput) {
+    if (ctx.role !== 'OWNER' && ctx.role !== 'PROFESSIONAL') {
+      throw new AppError('FORBIDDEN', 'Rol no autorizado para acceder al índice de expedientes clínicos', 403);
+    }
+
+    const { status, q, mine, page, pageSize } = input;
+    const skip = (page - 1) * pageSize;
+
+    const where: Prisma.ClinicalEncounterWhereInput = {
+      clinicId: ctx.clinicId
+    };
+
+    if (status) {
+      where.status = status;
+    }
+
+    if (mine === '1') {
+      where.professionalMembershipId = ctx.membershipId;
+    }
+
+    if (q) {
+      where.patient = {
+        OR: [
+          { firstName: { contains: q, mode: 'insensitive' } },
+          { lastName: { contains: q, mode: 'insensitive' } },
+          { secondLastName: { contains: q, mode: 'insensitive' } }
+        ]
+      };
+    }
+
+    const [items, total] = await Promise.all([
+      this.prisma.clinicalEncounter.findMany({
+        where,
+        skip,
+        take: pageSize,
+        orderBy: [
+          { updatedAt: 'desc' },
+          { occurredAt: 'desc' },
+          { id: 'desc' }
+        ],
+        select: {
+          id: true,
+          occurredAt: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+          finalizedAt: true,
+          patient: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              secondLastName: true
+            }
+          },
+          professional: {
+            select: {
+              id: true,
+              user: {
+                select: {
+                  firstName: true,
+                  lastName: true,
+                  secondLastName: true
+                }
+              }
+            }
+          },
+          appointment: {
+            select: {
+              id: true,
+              startAt: true,
+              endAt: true,
+              status: true
+            }
+          }
+        }
+      }),
+      this.prisma.clinicalEncounter.count({ where })
+    ]);
+
+    const mappedItems = items.map(item => ({
+      id: item.id,
+      occurredAt: item.occurredAt,
+      status: item.status,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+      finalizedAt: item.finalizedAt,
+      patient: {
+        id: item.patient.id,
+        displayName: this.formatDisplayName(item.patient.firstName, item.patient.lastName, item.patient.secondLastName)
+      },
+      professional: {
+        membershipId: item.professional.id,
+        displayName: this.formatDisplayName(
+          item.professional.user.firstName,
+          item.professional.user.lastName,
+          item.professional.user.secondLastName
+        )
+      },
+      appointment: item.appointment ? {
+        id: item.appointment.id,
+        startAt: item.appointment.startAt,
+        endAt: item.appointment.endAt,
+        status: item.appointment.status
+      } : null
+    }));
+
+    return {
+      items: mappedItems,
+      page,
+      pageSize,
+      total,
+      totalPages: Math.ceil(total / pageSize)
+    };
   }
 
   async listEncounters(clinicId: string, actorRole: string, input: ListClinicalEncountersInput) {

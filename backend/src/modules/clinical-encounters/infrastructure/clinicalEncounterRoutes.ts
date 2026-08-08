@@ -8,6 +8,7 @@ router.use(authMiddleware);
 
 router.post('/', ClinicalEncounterController.create);
 router.get('/', ClinicalEncounterController.list);
+router.get('/records', ClinicalEncounterController.listRecords);
 router.get('/:id', ClinicalEncounterController.getById);
 router.patch('/:id', ClinicalEncounterController.update);
 router.post('/:id/finalize', ClinicalEncounterController.finalize);

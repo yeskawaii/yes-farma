@@ -250,3 +250,13 @@ export const createClinicalEncounterAmendmentSchema = z.object({
 
 export type CreateClinicalEncounterAmendmentInput =
   z.infer<typeof createClinicalEncounterAmendmentSchema>;
+
+export const listClinicalRecordsSchema = z.object({
+  status: z.enum(['DRAFT', 'FINALIZED']).optional(),
+  q: z.string().trim().max(100).transform(v => v === '' ? undefined : v).optional(),
+  mine: z.enum(['0', '1']).optional().default('0'),
+  page: z.coerce.number().min(1).optional().default(1),
+  pageSize: z.coerce.number().min(1).max(50).optional().default(20)
+}).strict();
+
+export type ListClinicalRecordsInput = z.infer<typeof listClinicalRecordsSchema>;

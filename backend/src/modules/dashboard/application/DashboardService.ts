@@ -51,6 +51,10 @@ export interface ProfessionalDashboardResponse {
   week: DashboardWeekSummary;
   pending: {
     draftClinicalEncounters: number;
+    singleDraft: {
+      encounterId: string;
+      patientId: string;
+    } | null;
   };
 }
 
@@ -289,6 +293,28 @@ export class DashboardService {
         }
       });
 
+      let singleDraft: { encounterId: string; patientId: string } | null = null;
+      if (pendingDrafts === 1) {
+        const draftEncounter = await this.prisma.clinicalEncounter.findFirst({
+          where: {
+            clinicId,
+            professionalMembershipId: membershipId,
+            status: 'DRAFT'
+          },
+          select: {
+            id: true,
+            patientId: true
+          }
+        });
+
+        if (draftEncounter) {
+          singleDraft = {
+            encounterId: draftEncounter.id,
+            patientId: draftEncounter.patientId
+          };
+        }
+      }
+
       return {
         scope: 'PERSONAL',
         generatedAt: now.toISOString(),
@@ -297,7 +323,8 @@ export class DashboardService {
         upcomingAppointments,
         week,
         pending: {
-          draftClinicalEncounters: pendingDrafts
+          draftClinicalEncounters: pendingDrafts,
+          singleDraft
         }
       };
     }

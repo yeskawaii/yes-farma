@@ -199,29 +199,56 @@ test('10-17, 24-29: Appointments counting correctly for today and scheduledMinut
   assert.strictEqual(res.week.patientsSeen, 1);
 });
 
-test('30. PROFESSIONAL draftClinicalEncounters cuenta solo sus DRAFT.', async () => {
-  const capturedArgs: Prisma.ClinicalEncounterCountArgs[] = [];
-  const repo = createFakeRepo({
-    clinicalEncounter: {
-      count: async (args: Prisma.ClinicalEncounterCountArgs) => {
-        capturedArgs.push(args);
-        return 42;
-      }
-    } as unknown as PrismaClient['clinicalEncounter']
-  });
-  const service = new DashboardService(repo);
-  const res = await service.getDashboard('c-1', 'my-mem', 'PROFESSIONAL');
+test('26-31. PROFESSIONAL draftClinicalEncounters y singleDraft logic', async () => {
+  const capturedArgsCount: Prisma.ClinicalEncounterCountArgs[] = [];
+  const capturedArgsFirst: Prisma.ClinicalEncounterFindFirstArgs[] = [];
 
-  assert.ok(capturedArgs[0]);
-  const firstArgs = capturedArgs[0];
-  assert.strictEqual(firstArgs.where?.status, 'DRAFT');
-  assert.strictEqual(firstArgs.where?.professionalMembershipId, 'my-mem');
+  const createMockService = (countResult: number, firstResult: any = null) => {
+    const repo = createFakeRepo({
+      clinicalEncounter: {
+        count: async (args: Prisma.ClinicalEncounterCountArgs) => {
+          capturedArgsCount.push(args);
+          return countResult;
+        },
+        findFirst: async (args: Prisma.ClinicalEncounterFindFirstArgs) => {
+          capturedArgsFirst.push(args);
+          return firstResult;
+        }
+      } as unknown as PrismaClient['clinicalEncounter']
+    });
+    return new DashboardService(repo);
+  };
 
-  if ('pending' in res) {
-    assert.strictEqual(res.pending.draftClinicalEncounters, 42);
-  } else {
-    assert.fail('Expected Professional dashboard to have pending field');
+  // 26. PROFESSIONAL 0 drafts -> count 0, singleDraft null.
+  const service0 = createMockService(0);
+  const res0 = await service0.getDashboard('c-1', 'm-1', 'PROFESSIONAL');
+  if ('pending' in res0) {
+    assert.strictEqual(res0.pending.draftClinicalEncounters, 0);
+    assert.strictEqual(res0.pending.singleDraft, null);
   }
+
+  // 27. PROFESSIONAL 1 draft -> singleDraft con encounterId/patientId.
+  const service1 = createMockService(1, { id: 'enc-1', patientId: 'pat-1' });
+  const res1 = await service1.getDashboard('c-1', 'm-2', 'PROFESSIONAL');
+  if ('pending' in res1) {
+    assert.strictEqual(res1.pending.draftClinicalEncounters, 1);
+    assert.deepStrictEqual(res1.pending.singleDraft, { encounterId: 'enc-1', patientId: 'pat-1' });
+  }
+
+  // 28. PROFESSIONAL 2+ drafts -> singleDraft null.
+  const service2 = createMockService(2, { id: 'enc-1', patientId: 'pat-1' });
+  const res2 = await service2.getDashboard('c-1', 'm-3', 'PROFESSIONAL');
+  if ('pending' in res2) {
+    assert.strictEqual(res2.pending.draftClinicalEncounters, 2);
+    assert.strictEqual(res2.pending.singleDraft, null);
+  }
+
+  // Check 29, 30, 31: findFirst usa clinicId, professionalMembershipId, status DRAFT
+  const firstArgs = capturedArgsFirst[0];
+  assert.ok(firstArgs);
+  assert.strictEqual(firstArgs.where?.clinicId, 'c-1');
+  assert.strictEqual(firstArgs.where?.professionalMembershipId, 'm-2');
+  assert.strictEqual(firstArgs.where?.status, 'DRAFT');
 });
 
 test('32-34: OWNER y ASSISTANT obtienen pacientes ACTIVE', async () => {

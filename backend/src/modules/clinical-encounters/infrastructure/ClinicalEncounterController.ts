@@ -3,6 +3,7 @@ import { ClinicalEncounterService, IClinicalEncounterRepository } from '../appli
 import {
   createClinicalEncounterSchema,
   listClinicalEncountersSchema,
+  listClinicalRecordsSchema,
   updateClinicalEncounterSchema,
   finalizeClinicalEncounterSchema,
   createClinicalEncounterAmendmentSchema
@@ -50,6 +51,21 @@ export class ClinicalEncounterController {
       const input = listClinicalEncountersSchema.parse(req.query);
 
       const result = await clinicalEncounterService.listEncounters(ctx.clinicId, ctx.role, input);
+      res.json(result);
+    } catch (error: unknown) {
+      if (error instanceof z.ZodError) {
+        return next(new AppError('VALIDATION_ERROR', 'Datos inválidos', 400));
+      }
+      next(error);
+    }
+  }
+
+  static async listRecords(req: Request, res: Response, next: NextFunction) {
+    try {
+      const ctx = getAuthCtx(req);
+      const input = listClinicalRecordsSchema.parse(req.query);
+
+      const result = await clinicalEncounterService.listRecords(ctx, input);
       res.json(result);
     } catch (error: unknown) {
       if (error instanceof z.ZodError) {
