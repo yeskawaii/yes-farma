@@ -7,6 +7,7 @@ import { authRoutes } from '../modules/identity/http/authRoutes';
 import { patientRoutes } from '../modules/patients/infrastructure/patientRoutes';
 import { appointmentRoutes } from '../modules/appointments/infrastructure/appointmentRoutes';
 import { clinicalEncounterRoutes } from '../modules/clinical-encounters/infrastructure/clinicalEncounterRoutes';
+import { dashboardRoutes } from '../modules/dashboard/infrastructure/dashboardRoutes';
 import { errorHandler } from '../shared/errors/errorHandler';
 
 export const createApp = () => {
@@ -34,6 +35,7 @@ export const createApp = () => {
   app.use('/api/patients', patientRoutes);
   app.use('/api/appointments', appointmentRoutes);
   app.use('/api/clinical-encounters', clinicalEncounterRoutes);
+  app.use('/api/dashboard', dashboardRoutes);
 
   // Global Error Handler
   app.use(errorHandler);
