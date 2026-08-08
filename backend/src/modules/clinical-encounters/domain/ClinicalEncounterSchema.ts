@@ -244,8 +244,8 @@ export type FinalizeClinicalEncounterInput =
 
 export const createClinicalEncounterAmendmentSchema = z.object({
   version: z.number().int().min(1, 'version must be >= 1'),
-  reason: z.string().trim().min(1, 'reason is required').max(500, 'reason max length is 500'),
-  note: z.string().trim().min(1, 'note is required')
+  reason: z.string().trim().min(1, 'reason is required').max(100, 'reason max length is 100'),
+  note: z.string().trim().min(1, 'note is required').max(300, 'note max length is 300')
 }).strict();
 
 export type CreateClinicalEncounterAmendmentInput =

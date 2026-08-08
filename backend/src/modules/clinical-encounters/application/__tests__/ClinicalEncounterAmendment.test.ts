@@ -73,19 +73,32 @@ test('create amendment schema validation checks', () => {
   const emptyNote = createClinicalEncounterAmendmentSchema.safeParse({ version: 1, reason: 'abc', note: '   ' });
   assert.equal(emptyNote.success, false);
 
-  const longReason = createClinicalEncounterAmendmentSchema.safeParse({ version: 1, reason: 'a'.repeat(501), note: 'def' });
+  const longReason = createClinicalEncounterAmendmentSchema.safeParse({ version: 1, reason: 'a'.repeat(101), note: 'def' });
   assert.equal(longReason.success, false);
+
+  const maxReason = createClinicalEncounterAmendmentSchema.safeParse({
+    version: 1,
+    reason: 'a'.repeat(100),
+    note: 'def'
+  });
+  assert.equal(maxReason.success, true);
 
   const valid = createClinicalEncounterAmendmentSchema.safeParse({ version: 1, reason: 'Razón válida', note: 'Nota válida' });
   assert.equal(valid.success, true);
 
-  // note usa db.Text y no tiene un máximo de dominio definido.
+  const maxNote = createClinicalEncounterAmendmentSchema.safeParse({
+    version: 1,
+    reason: 'Razón válida',
+    note: 'n'.repeat(300)
+  });
+  assert.equal(maxNote.success, true);
+
   const longNote = createClinicalEncounterAmendmentSchema.safeParse({
     version: 1,
     reason: 'Razón válida',
-    note: 'n'.repeat(10001)
+    note: 'n'.repeat(301)
   });
-  assert.equal(longNote.success, true);
+  assert.equal(longNote.success, false);
 
   const extraFields = createClinicalEncounterAmendmentSchema.safeParse({ version: 1, reason: 'A', note: 'B', status: 'DRAFT', author: 'Test' });
   assert.equal(extraFields.success, false); // strict
