@@ -8,7 +8,7 @@ export function MainLayout() {
   const { user, activeRole, logout } = useAuth();
 
   const initials = user ? `${user.firstName[0]}${user.lastName[0]}`.toUpperCase() : 'YF';
-  const roleDisplay = activeRole === 'OWNER' ? 'Propietario' : activeRole === 'PROFESSIONAL' ? 'Profesional Médico' : activeRole === 'ASSISTANT' ? 'Asistente' : 'Personal';
+  const roleDisplay = activeRole === 'OWNER' ? 'Propietario' : activeRole === 'PROFESSIONAL' ? 'Profesional' : activeRole === 'ASSISTANT' ? 'Asistente' : 'Personal';
 
   return (
     <div className="flex min-h-screen bg-[#F5F8FC] animate-slide-up">
@@ -53,7 +53,7 @@ export function MainLayout() {
             </button>
             <div className="flex items-center gap-3 pl-4 border-l border-slate-200">
               <div className="text-right">
-                <p className="text-sm font-semibold text-slate-900 leading-none">{user ? `Dr. ${user.lastName}` : 'Cargando...'}</p>
+                <p className="text-sm font-semibold text-slate-900 leading-none">{user ? `${user.firstName} ${user.lastName}` : 'Cargando...'}</p>
                 <p className="text-[11px] text-slate-500 mt-1 uppercase tracking-wide font-medium">{roleDisplay}</p>
               </div>
               <div className="w-9 h-9 rounded-lg bg-blue-50 border border-blue-100 text-blue-700 flex items-center justify-center font-bold text-sm shadow-sm">

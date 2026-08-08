@@ -171,7 +171,7 @@ export function DashboardPage() {
         {(scope === 'PERSONAL' || scope === 'CLINIC') && (
           <button
             type="button"
-            onClick={() => navigate('/patients')}
+            onClick={() => navigate('/records')}
             className="flex flex-row items-center gap-4 w-full p-4 bg-white rounded-xl border border-slate-200 hover:border-indigo-300 transition-all shadow-sm hover:shadow group active:scale-[0.98] text-left h-24"
           >
             <div className="w-12 h-12 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center transition-transform group-hover:scale-105 shrink-0">
@@ -303,21 +303,34 @@ export function DashboardPage() {
           {scope === 'PERSONAL' && 'pending' in data && (
             <div className="flex flex-col gap-3">
               <h2 className="text-lg font-bold text-slate-900">Borradores clínicos pendientes</h2>
-              <button
-                type="button"
-                onClick={() => navigate('/patients')}
-                className="bg-white rounded-xl p-4 border border-slate-200 hover:border-blue-300 transition-colors shadow-sm flex flex-row items-center justify-between text-left group"
-              >
-                <div className="flex items-center gap-3">
-                  <div className={`w-2 h-2 rounded-full ${data.pending.draftClinicalEncounters > 0 ? 'bg-amber-500' : 'bg-emerald-500'}`}></div>
-                  <p className="text-sm font-medium text-slate-700">
-                    {data.pending.draftClinicalEncounters === 0 && 'Sin borradores pendientes'}
-                    {data.pending.draftClinicalEncounters === 1 && '1 borrador pendiente'}
-                    {data.pending.draftClinicalEncounters > 1 && `${data.pending.draftClinicalEncounters} borradores pendientes`}
-                  </p>
+              {data.pending.draftClinicalEncounters === 0 ? (
+                <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm flex flex-row items-center justify-between text-left">
+                  <div className="flex items-center gap-3">
+                    <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                    <p className="text-sm font-medium text-slate-700">Sin borradores pendientes</p>
+                  </div>
                 </div>
-                <ChevronRight className="text-slate-300 group-hover:text-blue-500" size={18} />
-              </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (data.pending.draftClinicalEncounters === 1 && data.pending.singleDraft) {
+                      navigate(`/patients/${encodeURIComponent(data.pending.singleDraft.patientId)}/encounters/${encodeURIComponent(data.pending.singleDraft.encounterId)}`);
+                    } else {
+                      navigate('/records?status=DRAFT&mine=1');
+                    }
+                  }}
+                  className="bg-white rounded-xl p-4 border border-slate-200 hover:border-blue-300 transition-colors shadow-sm flex flex-row items-center justify-between text-left group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-2 h-2 rounded-full bg-amber-500"></div>
+                    <p className="text-sm font-medium text-slate-700">
+                      {data.pending.draftClinicalEncounters === 1 ? '1 borrador pendiente' : `${data.pending.draftClinicalEncounters} borradores pendientes`}
+                    </p>
+                  </div>
+                  <ChevronRight className="text-slate-300 group-hover:text-blue-500" size={18} />
+                </button>
+              )}
             </div>
           )}
 

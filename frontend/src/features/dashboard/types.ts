@@ -49,6 +49,10 @@ export interface ProfessionalDashboardResponse extends BaseDashboardResponse {
   scope: 'PERSONAL';
   pending: {
     draftClinicalEncounters: number;
+    singleDraft: {
+      encounterId: string;
+      patientId: string;
+    } | null;
   };
 }
 

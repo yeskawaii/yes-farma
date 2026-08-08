@@ -9,6 +9,7 @@ import { PatientCreate } from '../features/patients/PatientCreate';
 import { PatientEdit } from '../features/patients/PatientEdit';
 import { AppointmentsPage } from '../features/appointments/AppointmentsPage';
 import { EncounterEditor } from '../features/clinical-encounters/EncounterEditor';
+import { RecordsPage } from '../features/records/RecordsPage';
 
 export const router = createBrowserRouter([
   {
@@ -54,6 +55,10 @@ export const router = createBrowserRouter([
           {
             path: 'appointments',
             element: <AppointmentsPage />,
+          },
+          {
+            path: 'records',
+            element: <RecordsPage />,
           },
         ],
       }
