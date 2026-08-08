@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, AlertCircle, RefreshCw } from 'lucide-react';
 import { appointmentsApi } from './api';
 import type { AppointmentListItem } from './types';
@@ -21,16 +22,32 @@ import { useAuth } from '../../core/auth/AuthProvider';
 type ViewMode = 'daily' | 'weekly';
 
 export function AppointmentsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { activeRole } = useAuth();
+
   const [viewMode, setViewMode] = useState<ViewMode>('daily');
   const [currentDate, setCurrentDate] = useState<CivilDate>(getCivilDate());
+
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [selectedAppointmentId, setSelectedAppointmentId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (searchParams.get('new') === '1') {
+      setIsFormOpen(true);
+      setSearchParams(prev => {
+        const next = new URLSearchParams(prev);
+        next.delete('new');
+        return next;
+      }, { replace: true });
+    }
+
+    const apptId = searchParams.get('appointment');
+    setSelectedAppointmentId(apptId);
+  }, [searchParams, setSearchParams]);
 
   const [appointments, setAppointments] = useState<AppointmentListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  const [selectedAppointmentId, setSelectedAppointmentId] = useState<string | null>(null);
 
   const requestCounter = useRef(0);
 
@@ -189,7 +206,14 @@ export function AppointmentsPage() {
       {selectedAppointmentId && (
         <AppointmentDetailModal
           id={selectedAppointmentId}
-          onClose={() => setSelectedAppointmentId(null)}
+          onClose={() => {
+            setSelectedAppointmentId(null);
+            setSearchParams(prev => {
+              const next = new URLSearchParams(prev);
+              next.delete('appointment');
+              return next;
+            }, { replace: true });
+          }}
           onSuccess={fetchAppointments}
         />
       )}
