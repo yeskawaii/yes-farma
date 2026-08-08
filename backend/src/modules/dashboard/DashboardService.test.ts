@@ -30,9 +30,11 @@ test('1. PROFESSIONAL obtiene scope PERSONAL. 4. OWNER obtiene scope CLINIC. 6. 
 
   const resProf = await service.getDashboard('c-1', 'm-1', 'PROFESSIONAL');
   assert.strictEqual(resProf.scope, 'PERSONAL');
+  assert.strictEqual(resProf.timeZone, 'America/Mexico_City');
 
   const resOwner = await service.getDashboard('c-1', 'm-1', 'OWNER');
   assert.strictEqual(resOwner.scope, 'CLINIC');
+  assert.strictEqual(resOwner.timeZone, 'America/Mexico_City');
 
   const resAdmin = await service.getDashboard('c-1', 'm-1', 'ASSISTANT');
   assert.strictEqual(resAdmin.scope, 'CLINIC_ADMIN');

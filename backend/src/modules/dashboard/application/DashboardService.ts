@@ -45,6 +45,7 @@ export interface DashboardWeekSummary {
 export interface ProfessionalDashboardResponse {
   scope: 'PERSONAL';
   generatedAt: string;
+  timeZone: string;
   today: DashboardTodaySummary;
   upcomingAppointments: DashboardUpcomingAppointment[];
   week: DashboardWeekSummary;
@@ -56,6 +57,7 @@ export interface ProfessionalDashboardResponse {
 export interface OwnerDashboardResponse {
   scope: 'CLINIC';
   generatedAt: string;
+  timeZone: string;
   today: DashboardTodaySummary;
   upcomingAppointments: DashboardUpcomingAppointment[];
   week: DashboardWeekSummary;
@@ -67,6 +69,7 @@ export interface OwnerDashboardResponse {
 export interface AssistantDashboardResponse {
   scope: 'CLINIC_ADMIN';
   generatedAt: string;
+  timeZone: string;
   today: DashboardTodaySummary;
   upcomingAppointments: DashboardUpcomingAppointment[];
   week: DashboardWeekSummary;
@@ -289,6 +292,7 @@ export class DashboardService {
       return {
         scope: 'PERSONAL',
         generatedAt: now.toISOString(),
+        timeZone,
         today,
         upcomingAppointments,
         week,
@@ -309,6 +313,7 @@ export class DashboardService {
       return {
         scope: 'CLINIC',
         generatedAt: now.toISOString(),
+        timeZone,
         today,
         upcomingAppointments,
         week,
@@ -329,6 +334,7 @@ export class DashboardService {
     return {
       scope: 'CLINIC_ADMIN',
       generatedAt: now.toISOString(),
+      timeZone,
       today,
       upcomingAppointments,
       week,
