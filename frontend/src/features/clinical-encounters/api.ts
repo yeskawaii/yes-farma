@@ -42,5 +42,12 @@ export const clinicalEncountersApi = {
 
   finalizeClinicalEncounter: async (id: string, data: { version: number }): Promise<ClinicalEncounterDetail> => {
     return apiClient.post<ClinicalEncounterDetail>(`/clinical-encounters/${id}/finalize`, data);
+  },
+
+  addClinicalEncounterAmendment: async (
+    id: string,
+    data: { version: number; reason: string; note: string }
+  ): Promise<ClinicalEncounterDetail> => {
+    return apiClient.post<ClinicalEncounterDetail>(`/clinical-encounters/${id}/amendments`, data);
   }
 };
