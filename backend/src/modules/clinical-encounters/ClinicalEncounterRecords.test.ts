@@ -119,8 +119,9 @@ test('5. siempre filtra clinicId. 6. tenant distinto nunca aparece. 7-11. Filtro
   assert.strictEqual(capturedArgs[2].where?.status, 'FINALIZED');
 });
 
-test('12-13. q busca nombre, no contenido', async () => {
+test('12-13. q busca por palabras del nombre, no contenido clínico.', async () => {
   const capturedArgs: Prisma.ClinicalEncounterFindManyArgs[] = [];
+
   const service = new ClinicalEncounterService(createMockPrisma({
     clinicalEncounter: {
       findMany: async (args: Prisma.ClinicalEncounterFindManyArgs) => {
@@ -131,18 +132,70 @@ test('12-13. q busca nombre, no contenido', async () => {
     } as unknown as IClinicalEncounterRepository['clinicalEncounter']
   }));
 
-  await service.listRecords({ clinicId: 'c1', membershipId: 'm1', role: 'OWNER' }, { q: 'Juan', mine: '0', page: 1, pageSize: 20 });
-  assert.ok(capturedArgs[0]);
-  const OR = capturedArgs[0].where?.patient?.OR as any[];
-  assert.ok(OR);
-  assert.strictEqual(OR.length, 3);
-  assert.deepStrictEqual(OR[0].firstName, { contains: 'Juan', mode: 'insensitive' });
-  assert.deepStrictEqual(OR[1].lastName, { contains: 'Juan', mode: 'insensitive' });
-  assert.deepStrictEqual(OR[2].secondLastName, { contains: 'Juan', mode: 'insensitive' });
+  await service.listRecords(
+    { clinicId: 'c1', membershipId: 'm1', role: 'OWNER' },
+    { q: 'Angel del', mine: '0', page: 1, pageSize: 20 }
+  );
 
-  // No clinical content search
-  assert.strictEqual((capturedArgs[0].where as any).clinicalNotes, undefined);
-  assert.strictEqual((capturedArgs[0].where as any).diagnoses, undefined);
+  assert.ok(capturedArgs[0]);
+
+  assert.deepStrictEqual(capturedArgs[0].where?.patient, {
+    AND: [
+      {
+        OR: [
+          { firstName: { contains: 'Angel', mode: 'insensitive' } },
+          { lastName: { contains: 'Angel', mode: 'insensitive' } },
+          { secondLastName: { contains: 'Angel', mode: 'insensitive' } }
+        ]
+      },
+      {
+        OR: [
+          { firstName: { contains: 'del', mode: 'insensitive' } },
+          { lastName: { contains: 'del', mode: 'insensitive' } },
+          { secondLastName: { contains: 'del', mode: 'insensitive' } }
+        ]
+      }
+    ]
+  });
+
+  assert.strictEqual('clinicalNotes' in (capturedArgs[0].where ?? {}), false);
+  assert.strictEqual('diagnoses' in (capturedArgs[0].where ?? {}), false);
+});
+
+test('Regresión: select del usuario profesional no solicita secondLastName.', async () => {
+  let capturedArgs: Prisma.ClinicalEncounterFindManyArgs | undefined;
+
+  const service = new ClinicalEncounterService(createMockPrisma({
+    clinicalEncounter: {
+      findMany: async (args: Prisma.ClinicalEncounterFindManyArgs) => {
+        capturedArgs = args;
+        return [];
+      },
+      count: async () => 0
+    } as unknown as IClinicalEncounterRepository['clinicalEncounter']
+  }));
+
+  await service.listRecords(
+    { clinicId: 'c1', membershipId: 'm1', role: 'OWNER' },
+    { mine: '0', page: 1, pageSize: 20 }
+  );
+
+  assert.ok(capturedArgs);
+
+  assert.deepStrictEqual(
+    capturedArgs.select?.professional,
+    {
+      select: {
+        id: true,
+        user: {
+          select: {
+            firstName: true,
+            lastName: true
+          }
+        }
+      }
+    }
+  );
 });
 
 test('14-20. Paginación y retornos.', async () => {
@@ -179,7 +232,6 @@ test('21-24. item contains mapped fields exactly.', async () => {
       user: {
         firstName: 'P',
         lastName: 'D',
-        secondLastName: null
       }
     },
     appointment: null

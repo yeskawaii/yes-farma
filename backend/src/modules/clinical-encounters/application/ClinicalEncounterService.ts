@@ -236,12 +236,16 @@ export class ClinicalEncounterService {
     }
 
     if (q) {
+      const searchTerms = q.split(/\s+/).filter(Boolean);
+
       where.patient = {
-        OR: [
-          { firstName: { contains: q, mode: 'insensitive' } },
-          { lastName: { contains: q, mode: 'insensitive' } },
-          { secondLastName: { contains: q, mode: 'insensitive' } }
-        ]
+        AND: searchTerms.map(term => ({
+          OR: [
+            { firstName: { contains: term, mode: 'insensitive' } },
+            { lastName: { contains: term, mode: 'insensitive' } },
+            { secondLastName: { contains: term, mode: 'insensitive' } }
+          ]
+        }))
       };
     }
 
@@ -277,7 +281,6 @@ export class ClinicalEncounterService {
                 select: {
                   firstName: true,
                   lastName: true,
-                  secondLastName: true
                 }
               }
             }
@@ -310,8 +313,7 @@ export class ClinicalEncounterService {
         membershipId: item.professional.id,
         displayName: this.formatDisplayName(
           item.professional.user.firstName,
-          item.professional.user.lastName,
-          item.professional.user.secondLastName
+          item.professional.user.lastName
         )
       },
       appointment: item.appointment ? {
