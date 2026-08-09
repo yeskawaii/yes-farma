@@ -3,7 +3,7 @@ import assert from 'node:assert';
 import { PatientService, IPatientRepository } from './application/PatientService';
 import { createPatientSchema, updatePatientSchema, listPatientsSchema } from './domain/PatientSchema';
 import { AppError } from '../../shared/errors/AppError';
-import type { Patient } from '../../generated/prisma';
+import type { Patient, Prisma } from '../../generated/prisma';
 import { Request, Response, NextFunction } from 'express';
 import { requireRoles } from './infrastructure/requireRoles';
 import { AuthenticatedRequest } from './infrastructure/PatientController';
@@ -120,6 +120,56 @@ test('10. listado siempre filtra por clinicId', async () => {
   const service = new PatientService(repo);
   await service.listPatients('filtered-clinic', listPatientsSchema.parse({}));
   assert.strictEqual(findManyArgs.where.clinicId, 'filtered-clinic');
+});
+
+test('listado busca nombres por palabras y conserva correo/teléfono', async () => {
+  let capturedArgs: Prisma.PatientFindManyArgs | undefined;
+
+  const repo = createFakeRepo({
+    patient: {
+      findMany: async (args: Prisma.PatientFindManyArgs) => {
+        capturedArgs = args;
+        return [];
+      },
+      count: async () => 0,
+      findFirst: async () => null
+    }
+  });
+
+  const service = new PatientService(repo);
+
+  await service.listPatients(
+    'clinic-search',
+    listPatientsSchema.parse({ q: 'Angel del' })
+  );
+
+  assert.ok(capturedArgs);
+
+  assert.deepStrictEqual(capturedArgs.where, {
+    clinicId: 'clinic-search',
+    OR: [
+      {
+        AND: [
+          {
+            OR: [
+              { firstName: { contains: 'Angel', mode: 'insensitive' } },
+              { lastName: { contains: 'Angel', mode: 'insensitive' } },
+              { secondLastName: { contains: 'Angel', mode: 'insensitive' } }
+            ]
+          },
+          {
+            OR: [
+              { firstName: { contains: 'del', mode: 'insensitive' } },
+              { lastName: { contains: 'del', mode: 'insensitive' } },
+              { secondLastName: { contains: 'del', mode: 'insensitive' } }
+            ]
+          }
+        ]
+      },
+      { phone: { contains: 'Angel del' } },
+      { email: { contains: 'angel del' } }
+    ]
+  });
 });
 
 // 11. detalle de otro tenant devuelve 404

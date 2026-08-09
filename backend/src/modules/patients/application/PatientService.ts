@@ -46,18 +46,26 @@ export class PatientService {
     const { q, status, page, pageSize } = input;
     const skip = (page - 1) * pageSize;
 
-    const where: any = { clinicId };
+    const where: Prisma.PatientWhereInput = { clinicId };
     
     if (status) {
       where.status = status;
     }
 
-    if (q) {
+    if (q?.trim()) {
       const qNorm = q.trim();
+      const searchTerms = qNorm.split(/\s+/).filter(Boolean);
+
       where.OR = [
-        { firstName: { contains: qNorm, mode: 'insensitive' } },
-        { lastName: { contains: qNorm, mode: 'insensitive' } },
-        { secondLastName: { contains: qNorm, mode: 'insensitive' } },
+        {
+          AND: searchTerms.map(term => ({
+            OR: [
+              { firstName: { contains: term, mode: 'insensitive' } },
+              { lastName: { contains: term, mode: 'insensitive' } },
+              { secondLastName: { contains: term, mode: 'insensitive' } }
+            ]
+          }))
+        },
         { phone: { contains: qNorm } },
         { email: { contains: qNorm.toLowerCase() } }
       ];
