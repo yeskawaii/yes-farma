@@ -15,6 +15,8 @@ export default defineConfig({
       manifest: {
         name: 'Yes Farma App',
         short_name: 'YesFarma',
+        lang: 'es-MX',
+        dir: 'ltr',
         description: 'Aplicación integral para la gestión de farmacias, expedientes médicos y agendamiento.',
         theme_color: '#ffffff',
         icons: [
