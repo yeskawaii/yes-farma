@@ -5,6 +5,31 @@ import {
   ListDocumentsQuery,
 } from '../domain/PatientDocumentSchema';
 import { IPatientDocumentRepository } from './IPatientDocumentRepository';
+import { PatientDocument } from '../../../generated/prisma';
+
+export interface PublicPatientDocument {
+  id: string;
+  patientId: string;
+  clinicalEncounterId: string | null;
+  category: PatientDocument['category'];
+  originalFileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: Date;
+}
+
+function toPublicDocument(doc: PatientDocument): PublicPatientDocument {
+  return {
+    id: doc.id,
+    patientId: doc.patientId,
+    clinicalEncounterId: doc.clinicalEncounterId,
+    category: doc.category,
+    originalFileName: doc.originalFileName,
+    mimeType: doc.mimeType,
+    sizeBytes: doc.sizeBytes,
+    createdAt: doc.createdAt,
+  };
+}
 
 export function checkMagicBytes(mimeType: string, bytes: Uint8Array): boolean {
   if (mimeType === 'application/pdf') {
@@ -111,7 +136,7 @@ export class PatientDocumentService {
 
     if (document.status === 'ACTIVE') {
       // Idempotent success
-      return document;
+      return toPublicDocument(document);
     }
 
     // Verify object in storage
@@ -153,7 +178,7 @@ export class PatientDocumentService {
           throw new AppError('CONFLICT', 'Conflicto al actualizar el estado del documento.', 409);
         }
         // ACTIVE -> idempotent success without creating AuditEvent
-        return docFallback;
+        return toPublicDocument(docFallback);
       }
 
       const doc = await tx.findDocumentById(clinicId, documentId);
@@ -173,25 +198,16 @@ export class PatientDocumentService {
         },
       });
 
-      return doc;
+      return toPublicDocument(doc);
     });
 
     return updatedDocument;
   }
 
-  async listDocuments(clinicId: string, query: ListDocumentsQuery) {
+  async listDocuments(clinicId: string, query: ListDocumentsQuery): Promise<PublicPatientDocument[]> {
     const documents = await this.prisma.listActiveDocuments(clinicId, query.patientId);
 
-    return documents.map(doc => ({
-      id: doc.id,
-      patientId: doc.patientId,
-      clinicalEncounterId: doc.clinicalEncounterId,
-      category: doc.category,
-      originalFileName: doc.originalFileName,
-      mimeType: doc.mimeType,
-      sizeBytes: doc.sizeBytes,
-      createdAt: doc.createdAt,
-    }));
+    return documents.map(toPublicDocument);
   }
 
   async getDownloadUrl(
@@ -245,7 +261,7 @@ export class PatientDocumentService {
     }
 
     if (document.status === 'DELETED') {
-      return document;
+      return { success: true };
     }
 
     if (document.status === 'PENDING') {
@@ -259,7 +275,7 @@ export class PatientDocumentService {
         const docFallback = await tx.findDocumentById(clinicId, documentId);
         if (!docFallback) throw new AppError('NOT_FOUND', 'Documento no encontrado.', 404);
         if (docFallback.status === 'DELETED') {
-          return docFallback;
+          return { success: true };
         }
         throw new AppError('CONFLICT', 'Conflicto al eliminar el documento.', 409);
       }
@@ -278,11 +294,9 @@ export class PatientDocumentService {
         },
       });
 
-      const doc = await tx.findDocumentById(clinicId, documentId);
-      if (!doc) throw new AppError('NOT_FOUND', 'Documento no encontrado.', 404);
-      return doc;
+      return { success: true };
     });
 
-    return deletedDocument;
+    return { success: true };
   }
 }

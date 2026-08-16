@@ -227,8 +227,9 @@ test('12. complete correcto -> ACTIVE', async () => {
   const service = new PatientDocumentService(repo, provider, storageConfig);
 
   const res = await service.completeUpload('clinic-1', 'usr-1', 'doc-1');
-  assert.strictEqual(res.status, 'ACTIVE');
+  assert.strictEqual(res.id, 'doc-1');
   assert.strictEqual(docStatus, 'ACTIVE');
+  assert.ok(!('storageKey' in res));
 });
 
 test('13. complete ACTIVE idempotente', async () => {
@@ -242,8 +243,9 @@ test('13. complete ACTIVE idempotente', async () => {
 
   const res = await service.completeUpload('clinic-1', 'usr-1', 'doc-1');
 
-  assert.strictEqual(res.status, 'ACTIVE');
+  assert.strictEqual(res.id, 'doc-1');
   assert.strictEqual(txCalled, false);
+  assert.ok(!('storageKey' in res));
 });
 
 test('14. listado filtra por clinicId', async () => {
@@ -268,6 +270,15 @@ test('15. listado no devuelve PENDING/DELETED', async () => {
   const docs = await service.listDocuments('clinic-1', { patientId: '123e4567-e89b-12d3-a456-426614174000' });
 
   assert.strictEqual(docs.length, 1);
+
+const firstDoc = docs[0];
+if (!firstDoc) {
+  throw new Error('Expected one public patient document');
+}
+  assert.ok(!('storageKey' in firstDoc));
+  assert.ok(!('storageBucket' in firstDoc));
+  assert.ok(!('storageProvider' in firstDoc));
+  assert.ok(!('uploadedByMembershipId' in firstDoc));
 });
 
 test('16. download de otro tenant -> rechazo', async () => {
@@ -462,7 +473,7 @@ test('24. completeUpload concurrencia - ganador (count === 1)', async () => {
   });
   const service = new PatientDocumentService(repo, createFakeStorageProvider(), storageConfig);
   const doc = await service.completeUpload('clinic-1', 'usr-1', 'doc-1');
-  assert.strictEqual(doc.status, 'ACTIVE');
+  assert.strictEqual(doc.id, 'doc-1');
   assert.strictEqual(auditCount, 1);
 });
 
@@ -492,7 +503,7 @@ test('25. completeUpload concurrencia - perdedor con ACTIVE', async () => {
   });
   const service = new PatientDocumentService(repo, createFakeStorageProvider(), storageConfig);
   const doc = await service.completeUpload('clinic-1', 'usr-1', 'doc-1');
-  assert.strictEqual(doc.status, 'ACTIVE');
+  assert.strictEqual(doc.id, 'doc-1');
   assert.strictEqual(auditCount, 0);
 });
 
@@ -569,7 +580,7 @@ test('29. deleteDocument concurrencia - ganador (count === 1)', async () => {
   });
   const service = new PatientDocumentService(repo, createFakeStorageProvider(), storageConfig);
   const doc = await service.deleteDocument('clinic-1', 'mem-1', 'usr-1', 'doc-1');
-  assert.strictEqual(doc.status, 'DELETED');
+  assert.deepStrictEqual(doc, { success: true });
   assert.strictEqual(auditCount, 1);
 });
 
@@ -595,7 +606,7 @@ test('30. deleteDocument concurrencia - perdedor con DELETED', async () => {
   });
   const service = new PatientDocumentService(repo, createFakeStorageProvider(), storageConfig);
   const doc = await service.deleteDocument('clinic-1', 'mem-1', 'usr-1', 'doc-1');
-  assert.strictEqual(doc.status, 'DELETED');
+  assert.deepStrictEqual(doc, { success: true });
   assert.strictEqual(auditCount, 0);
 });
 

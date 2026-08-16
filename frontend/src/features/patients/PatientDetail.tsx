@@ -6,6 +6,7 @@ import { ApiClientError } from '../../core/api/client';
 import type { PatientDetail as PatientDetailType } from './types';
 import { useAuth } from '../../core/auth/AuthProvider';
 import { EncounterList } from '../clinical-encounters/EncounterList';
+import { PatientDocumentList } from '../patient-documents/components/PatientDocumentList';
 
 export function PatientDetail() {
   const { id } = useParams<{ id: string }>();
@@ -172,7 +173,7 @@ export function PatientDetail() {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('es-ES', {
+    return new Date(dateString).toLocaleDateString('es-MX', {
       year: 'numeric',
       month: 'long',
       day: 'numeric'
@@ -292,6 +293,9 @@ export function PatientDetail() {
 
           {/* Clinical Encounters */}
           {id && <EncounterList patientId={id} />}
+
+          {/* Patient Documents */}
+          {id && <PatientDocumentList patientId={id} />}
         </div>
 
         {/* Sidebar Column */}
