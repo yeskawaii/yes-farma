@@ -55,6 +55,23 @@ enum ClinicalEncounterStatus {
   FINALIZED
 }
 
+enum PatientDocumentCategory {
+  RADIOGRAPH
+  LAB_RESULT
+  PRESCRIPTION
+  CONSENT
+  IDENTIFICATION
+  CLINICAL_IMAGE
+  REFERRAL
+  OTHER
+}
+
+enum PatientDocumentStatus {
+  PENDING
+  ACTIVE
+  DELETED
+}
+
 model User {
   id           String     @id @default(uuid()) @db.Uuid
   email        String     @unique
@@ -87,6 +104,7 @@ model Clinic {
   patients           Patient[]
   appointments       Appointment[]
   clinicalEncounters ClinicalEncounter[]
+  patientDocuments   PatientDocument[]
 }
 
 model Membership {
@@ -116,7 +134,10 @@ model Membership {
   updatedClinicalEncounters          ClinicalEncounter[]          @relation("ClinicalEncounterUpdatedBy")
   finalizedClinicalEncounters        ClinicalEncounter[]          @relation("ClinicalEncounterFinalizedBy")
   createdClinicalEncounterAmendments ClinicalEncounterAmendment[] @relation("ClinicalEncounterAmendmentCreatedBy")
+  uploadedPatientDocuments           PatientDocument[]            @relation("PatientDocumentUploadedBy")
+  deletedPatientDocuments            PatientDocument[]            @relation("PatientDocumentDeletedBy")
 
+  @@unique([clinicId, id])
   @@unique([userId, clinicId])
   @@index([userId])
   @@index([clinicId])
@@ -204,7 +225,9 @@ model Patient {
 
   appointments       Appointment[]
   clinicalEncounters ClinicalEncounter[]
+  documents          PatientDocument[]
 
+  @@unique([clinicId, id])
   @@index([clinicId, status])
   @@index([clinicId, lastName, firstName])
   @@index([clinicId, phone])
@@ -281,12 +304,46 @@ model ClinicalEncounter {
   diagnoses    ClinicalDiagnosis[]
   procedures   ClinicalProcedure[]
   amendments   ClinicalEncounterAmendment[]
+  documents    PatientDocument[]
 
   @@unique([clinicId, id])
   @@index([clinicId, patientId, occurredAt])
   @@index([clinicId, professionalMembershipId, occurredAt], map: "ClinicalEncounter_clinicId_professionalMembershipId_occurr_idx")
   @@index([clinicId, status, occurredAt])
   @@index([clinicId, updatedAt])
+}
+
+model PatientDocument {
+  id                     String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clinicId               String                  @db.Uuid
+  patientId              String                  @db.Uuid
+  clinicalEncounterId    String?                 @db.Uuid
+  category               PatientDocumentCategory
+  status                 PatientDocumentStatus   @default(PENDING)
+  originalFileName       String
+  mimeType               String
+  sizeBytes              Int
+  sha256                 String?
+  storageProvider        String
+  storageBucket          String
+  storageKey             String
+  createdAt              DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime                @updatedAt @db.Timestamptz(3)
+  uploadedByMembershipId String                  @db.Uuid
+  deletedAt              DateTime?               @db.Timestamptz(3)
+  deletedByMembershipId  String?                 @db.Uuid
+
+  clinic            Clinic             @relation(fields: [clinicId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  patient           Patient            @relation(fields: [clinicId, patientId], references: [clinicId, id], onDelete: Restrict, onUpdate: Cascade)
+  clinicalEncounter ClinicalEncounter? @relation(fields: [clinicId, clinicalEncounterId], references: [clinicId, id], onDelete: Restrict, onUpdate: Cascade)
+  uploadedBy        Membership         @relation("PatientDocumentUploadedBy", fields: [clinicId, uploadedByMembershipId], references: [clinicId, id], onDelete: Restrict, onUpdate: Cascade)
+  deletedBy         Membership?        @relation("PatientDocumentDeletedBy", fields: [clinicId, deletedByMembershipId], references: [clinicId, id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([clinicId, id])
+  @@unique([storageProvider, storageBucket, storageKey])
+  @@index([clinicId, patientId, status, createdAt])
+  @@index([clinicId, clinicalEncounterId, status])
+  @@index([clinicId, status, createdAt])
 }
 
 model ClinicalVitalSigns {

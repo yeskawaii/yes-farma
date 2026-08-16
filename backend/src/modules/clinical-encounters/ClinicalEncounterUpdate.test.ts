@@ -1,3 +1,4 @@
+import '../../test-setup';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { updateClinicalEncounterSchema } from './domain/ClinicalEncounterSchema';
