@@ -2,10 +2,12 @@ import { Router } from 'express';
 import { PatientController } from './PatientController';
 import { requireRoles } from './requireRoles';
 import { authMiddleware } from '../../../middlewares/auth';
+import { validateOrigin } from '../../../middlewares/validateOrigin';
 
 export const patientRoutes = Router();
 
 patientRoutes.use(authMiddleware);
+patientRoutes.use(validateOrigin);
 
 patientRoutes.get('/', PatientController.list);
 

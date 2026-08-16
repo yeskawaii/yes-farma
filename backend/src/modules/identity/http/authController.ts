@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from 'express';
+import { CookieOptions, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { AuthService } from '../application/AuthService';
 import { CryptoService } from '../infrastructure/CryptoService';
@@ -9,6 +9,13 @@ const loginSchema = z.object({
   email: z.string().email('Email inválido.'),
   password: z.string().min(1, 'La contraseña es requerida.'),
 });
+
+const sessionCookieOptions: CookieOptions = {
+  httpOnly: true,
+  secure: env.NODE_ENV === 'production',
+  sameSite: 'lax',
+  path: '/',
+};
 
 export const authController = {
   login: async (req: Request, res: Response, next: NextFunction) => {
@@ -25,9 +32,7 @@ export const authController = {
       const { rawToken, expiresAt } = await AuthService.login(email, password, req.ip, req.headers['user-agent']);
 
       res.cookie(env.SESSION_COOKIE_NAME, rawToken, {
-        httpOnly: true,
-        secure: env.NODE_ENV === 'production',
-        sameSite: 'lax',
+        ...sessionCookieOptions,
         expires: expiresAt,
       });
 
@@ -45,7 +50,7 @@ export const authController = {
         await AuthService.logout(tokenHash, req.ip, req.headers['user-agent']);
       }
 
-      res.clearCookie(env.SESSION_COOKIE_NAME);
+      res.clearCookie(env.SESSION_COOKIE_NAME, sessionCookieOptions);
       res.status(200).json({ message: 'Logout exitoso.' });
     } catch (error) {
       next(error);

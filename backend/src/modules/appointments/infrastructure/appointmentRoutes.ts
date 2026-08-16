@@ -1,10 +1,12 @@
 import { Router } from 'express';
 import { AppointmentController } from './AppointmentController';
 import { authMiddleware } from '../../../middlewares/auth';
+import { validateOrigin } from '../../../middlewares/validateOrigin';
 
 const router = Router();
 
 router.use(authMiddleware);
+router.use(validateOrigin);
 
 // Listar citas
 router.get('/', AppointmentController.list);
