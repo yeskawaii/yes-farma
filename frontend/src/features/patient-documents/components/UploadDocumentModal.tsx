@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { Upload, X, AlertCircle, CheckCircle, Loader2, FileText, Image as ImageIcon } from 'lucide-react';
 import { patientDocumentsApi } from '../api';
+import { Modal } from '../../../shared/components/Modal/Modal';
 import {
   DOCUMENT_CATEGORIES,
   ALLOWED_MIME_TYPES,
@@ -110,7 +111,11 @@ export function UploadDocumentModal({ patientId, onClose, onSuccess }: UploadDoc
   const isUploading = status === 'uploading' || status === 'completing' || status === 'success';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+    <Modal
+      onClose={onClose}
+      closeOnBackdrop={!isUploading}
+      closeOnEscape={!isUploading}
+    >
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
         <div className="p-6 border-b border-slate-100 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
@@ -241,6 +246,6 @@ export function UploadDocumentModal({ patientId, onClose, onSuccess }: UploadDoc
           </div>
         )}
       </div>
-    </div>
+    </Modal>
   );
 }

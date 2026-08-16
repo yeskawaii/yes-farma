@@ -7,6 +7,7 @@ import { patientDocumentsApi } from '../api';
 import type { PatientDocument, DocumentCategory } from '../types';
 import { useAuth } from '../../../core/auth/AuthProvider';
 import { UploadDocumentModal } from './UploadDocumentModal';
+import { Modal } from '../../../shared/components/Modal/Modal';
 
 interface PatientDocumentListProps {
   patientId: string;
@@ -236,7 +237,11 @@ export function PatientDocumentList({ patientId }: PatientDocumentListProps) {
       )}
 
       {documentToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+        <Modal
+          onClose={() => !isDeleting && setDocumentToDelete(null)}
+          closeOnBackdrop={!isDeleting}
+          closeOnEscape={!isDeleting}
+        >
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-6">
               <div className="flex items-start justify-between">
@@ -279,7 +284,7 @@ export function PatientDocumentList({ patientId }: PatientDocumentListProps) {
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
