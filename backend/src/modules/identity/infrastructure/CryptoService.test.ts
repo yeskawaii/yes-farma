@@ -55,6 +55,24 @@ test('CryptoService - rechaza hashes inválidos sin lanzar excepción', async ()
   );
 });
 
+test('CryptoService - genera tokens de recuperación aleatorios y opacos', () => {
+  const first = CryptoService.generatePasswordResetToken();
+  const second = CryptoService.generatePasswordResetToken();
+
+  assert.ok(first.length > 20);
+  assert.ok(second.length > 20);
+  assert.notStrictEqual(first, second);
+});
+
+test('CryptoService - hashea token de recuperación con SHA-256', () => {
+  const rawToken = CryptoService.generatePasswordResetToken();
+  const tokenHash = CryptoService.hashPasswordResetToken(rawToken);
+
+  assert.strictEqual(tokenHash.length, 64);
+  assert.match(tokenHash, /^[a-f0-9]{64}$/);
+  assert.notStrictEqual(tokenHash, rawToken);
+});
+
 test('CryptoService - generación y hash de token de sesión', () => {
   const rawToken = CryptoService.generateSessionToken();
 

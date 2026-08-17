@@ -80,6 +80,14 @@ export class CryptoService {
     );
   }
 
+  static generatePasswordResetToken(): string {
+    return crypto.randomBytes(32).toString('base64url');
+  }
+
+  static hashPasswordResetToken(token: string): string {
+    return crypto.createHash('sha256').update(token).digest('hex');
+  }
+
   static generateSessionToken(): string {
     return crypto.randomBytes(32).toString('base64url');
   }
