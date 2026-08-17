@@ -10,15 +10,18 @@ import { PatientEdit } from '../features/patients/PatientEdit';
 import { AppointmentsPage } from '../features/appointments/AppointmentsPage';
 import { EncounterEditor } from '../features/clinical-encounters/EncounterEditor';
 import { RecordsPage } from '../features/records/RecordsPage';
+import { RouteErrorPage } from '../shared/components/RouteErrorPage/RouteErrorPage';
 
 export const router = createBrowserRouter([
   {
     path: '/login',
     element: <LoginPage />,
+    errorElement: <RouteErrorPage />,
   },
   {
     path: '/',
     element: <ProtectedRoute />,
+    errorElement: <RouteErrorPage />,
     children: [
       {
         path: '/',
@@ -67,5 +70,6 @@ export const router = createBrowserRouter([
   {
     path: '*',
     element: <Navigate to="/login" replace />,
+    errorElement: <RouteErrorPage />,
   }
 ]);
