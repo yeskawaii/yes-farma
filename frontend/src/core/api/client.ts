@@ -1,3 +1,5 @@
+import { notifyAuthInvalidated } from '../auth/authEvents';
+
 export class ApiClientError extends Error {
   public status: number;
   public code?: string;
@@ -34,6 +36,18 @@ async function handleResponse(res: Response) {
       else if (res.status === 403) message = 'Acceso denegado';
       else if (res.status === 401) message = 'No autenticado';
       else if (res.status >= 500) message = 'Error interno del servidor';
+    }
+
+    const invalidatesAuthentication =
+      res.status === 401 ||
+      (res.status === 403 &&
+        (code === 'ACCOUNT_DISABLED' || code === 'MEMBERSHIP_DISABLED'));
+
+    if (invalidatesAuthentication) {
+      notifyAuthInvalidated({
+        status: res.status,
+        code,
+      });
     }
 
     throw new ApiClientError(res.status, message, code, details);

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { apiClient } from '../api/client';
+import { AUTH_INVALIDATED_EVENT } from './authEvents';
 
 export interface User {
   id: string;
@@ -58,6 +59,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     checkAuth();
   }, [checkAuth]);
+
+  useEffect(() => {
+    const handleAuthInvalidated = () => {
+      setState({
+        user: null,
+        memberships: [],
+        activeClinicId: null,
+        activeRole: null,
+        status: 'unauthenticated',
+      });
+    };
+
+    window.addEventListener(AUTH_INVALIDATED_EVENT, handleAuthInvalidated);
+
+    return () => {
+      window.removeEventListener(AUTH_INVALIDATED_EVENT, handleAuthInvalidated);
+    };
+  }, []);
 
   const login = async (email: string, password: string) => {
     await apiClient.post('/auth/login', { email, password });
