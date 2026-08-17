@@ -84,9 +84,10 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  memberships Membership[]
-  sessions    Session[]
-  auditEvents AuditEvent[]
+  memberships         Membership[]
+  sessions            Session[]
+  passwordResetTokens PasswordResetToken[]
+  auditEvents         AuditEvent[]
 }
 
 model Clinic {
@@ -176,6 +177,22 @@ model Session {
   @@index([expiresAt])
   @@index([activeClinicId])
 }
+
+
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([userId, usedAt])
+  @@index([expiresAt])
+}
+
 
 model AuditEvent {
   id          String  @id @default(uuid()) @db.Uuid
