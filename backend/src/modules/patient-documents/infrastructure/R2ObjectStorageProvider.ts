@@ -1,5 +1,6 @@
 import {
   CreateDownloadUrlInput,
+  CreatePreviewUrlInput,
   CreateUploadUrlInput,
   HeadObjectResult,
   ObjectStorageProvider,
@@ -32,6 +33,19 @@ export class R2ObjectStorageProvider implements ObjectStorageProvider {
     const contentDisposition = input.downloadFileName
       ? `attachment; filename="${this.sanitizeDownloadFileName(input.downloadFileName)}"`
       : undefined;
+
+    return this.transport.createDownloadUrl(
+      this.bucketName,
+      input.key,
+      contentDisposition,
+      input.expiresInSeconds
+    );
+  }
+
+  async createPreviewUrl(input: CreatePreviewUrlInput): Promise<string> {
+    const contentDisposition = input.previewFileName
+      ? `inline; filename="${this.sanitizeDownloadFileName(input.previewFileName)}"`
+      : 'inline';
 
     return this.transport.createDownloadUrl(
       this.bucketName,

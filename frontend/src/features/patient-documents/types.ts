@@ -61,3 +61,7 @@ export interface UploadUrlResponse {
 export interface DownloadUrlResponse {
   downloadUrl: string;
 }
+
+export interface PreviewUrlResponse {
+  previewUrl: string;
+}

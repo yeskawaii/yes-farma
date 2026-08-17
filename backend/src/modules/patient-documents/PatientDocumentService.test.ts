@@ -4,7 +4,7 @@ import { PatientDocumentService } from './application/PatientDocumentService';
 import { IPatientDocumentRepository, CreatePatientDocumentDto, CreateAuditEventDto } from './application/IPatientDocumentRepository';
 import { uploadDocumentSchema, listDocumentsSchema } from './domain/PatientDocumentSchema';
 import { AppError } from '../../shared/errors/AppError';
-import { ObjectStorageProvider, CreateUploadUrlInput, CreateDownloadUrlInput, HeadObjectResult } from './infrastructure/ObjectStorageProvider';
+import { ObjectStorageProvider, CreateUploadUrlInput, CreateDownloadUrlInput, CreatePreviewUrlInput, HeadObjectResult } from './infrastructure/ObjectStorageProvider';
 import { requireRoles } from '../patients/infrastructure/requireRoles';
 import { Request, Response, NextFunction } from 'express';
 import type { PatientDocument } from '../../generated/prisma';
@@ -38,6 +38,7 @@ const createFakeStorageProvider = (overrides: Partial<ObjectStorageProvider> = {
   return {
     createUploadUrl: async (input: CreateUploadUrlInput) => 'https://fake-upload-url',
     createDownloadUrl: async (input: CreateDownloadUrlInput) => 'https://fake-download-url',
+    createPreviewUrl: async (input: CreatePreviewUrlInput) => 'https://fake-preview-url',
     headObject: async (key: string) => ({ exists: true, contentLength: 1024, contentType: 'application/pdf' }),
     deleteObject: async (key: string) => { },
     getPartialObject: async (key: string, length: number) => new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2D]), // %PDF-
@@ -270,15 +271,11 @@ test('15. listado no devuelve PENDING/DELETED', async () => {
   const docs = await service.listDocuments('clinic-1', { patientId: '123e4567-e89b-12d3-a456-426614174000' });
 
   assert.strictEqual(docs.length, 1);
-
-const firstDoc = docs[0];
-if (!firstDoc) {
-  throw new Error('Expected one public patient document');
-}
-  assert.ok(!('storageKey' in firstDoc));
-  assert.ok(!('storageBucket' in firstDoc));
-  assert.ok(!('storageProvider' in firstDoc));
-  assert.ok(!('uploadedByMembershipId' in firstDoc));
+  const doc = docs[0]!;
+  assert.ok(!('storageKey' in doc));
+  assert.ok(!('storageBucket' in doc));
+  assert.ok(!('storageProvider' in doc));
+  assert.ok(!('uploadedByMembershipId' in doc));
 });
 
 test('16. download de otro tenant -> rechazo', async () => {
@@ -679,4 +676,107 @@ test('31. AwsR2Transport - offline test sin any ni casts masivos', async () => {
   } else {
     assert.fail('Expected GetObjectCommand');
   }
+});
+
+test('32. preview obtiene URL para ACTIVE', async () => {
+  const repo = createFakeRepo();
+  const provider = createFakeStorageProvider({
+    createPreviewUrl: async () => 'https://signed.preview.url'
+  });
+  const service = new PatientDocumentService(repo, provider, storageConfig);
+
+  const res = await service.getPreviewUrl('clinic-1', 'usr-1', 'doc-1');
+  assert.strictEqual(res.previewUrl, 'https://signed.preview.url');
+  assert.ok(!('downloadUrl' in res));
+});
+
+test('33. preview rechaza documento inexistente o de otro tenant', async () => {
+  const repo = createFakeRepo({
+    findDocumentById: async () => null,
+  });
+  const service = new PatientDocumentService(repo, createFakeStorageProvider(), storageConfig);
+
+  await assert.rejects(
+    () => service.getPreviewUrl('clinic-1', 'usr-1', 'doc-1'),
+    (err: unknown) => err instanceof AppError && err.statusCode === 404
+  );
+});
+
+test('34. preview rechaza documento PENDING', async () => {
+  const repo = createFakeRepo({
+    findDocumentById: async () => ({ id: 'doc-1', status: 'PENDING', mimeType: 'application/pdf' } as PatientDocument),
+  });
+  const service = new PatientDocumentService(repo, createFakeStorageProvider(), storageConfig);
+
+  await assert.rejects(
+    () => service.getPreviewUrl('clinic-1', 'usr-1', 'doc-1'),
+    (err: unknown) => err instanceof AppError && err.statusCode === 404
+  );
+});
+
+test('35. preview rechaza documento DELETED', async () => {
+  const repo = createFakeRepo({
+    findDocumentById: async () => ({ id: 'doc-1', status: 'DELETED', mimeType: 'application/pdf' } as PatientDocument),
+  });
+  const service = new PatientDocumentService(repo, createFakeStorageProvider(), storageConfig);
+
+  await assert.rejects(
+    () => service.getPreviewUrl('clinic-1', 'usr-1', 'doc-1'),
+    (err: unknown) => err instanceof AppError && err.statusCode === 404
+  );
+});
+
+test('36. preview rechaza MIME no soportado', async () => {
+  const repo = createFakeRepo({
+    findDocumentById: async () => ({ id: 'doc-1', status: 'ACTIVE', mimeType: 'application/zip' } as PatientDocument),
+  });
+  const service = new PatientDocumentService(repo, createFakeStorageProvider(), storageConfig);
+
+  await assert.rejects(
+    () => service.getPreviewUrl('clinic-1', 'usr-1', 'doc-1'),
+    (err: unknown) => err instanceof AppError && err.statusCode === 400 && err.message.includes('tipo de archivo no soporta')
+  );
+});
+
+test('37. preview genera AuditEvent', async () => {
+  let auditAction = '';
+  const repo = createFakeRepo({
+    findDocumentById: async () => ({ id: 'doc-1', clinicId: 'clinic-1', status: 'ACTIVE', mimeType: 'application/pdf' } as PatientDocument),
+    createAuditEvent: async (data: CreateAuditEventDto) => { auditAction = data.action; }
+  });
+  const service = new PatientDocumentService(repo, createFakeStorageProvider(), storageConfig);
+
+  await service.getPreviewUrl('clinic-1', 'usr-1', 'doc-1');
+  assert.strictEqual(auditAction, 'PATIENT_DOCUMENT_PREVIEWED');
+});
+
+test('38. R2ObjectStorageProvider genera intention inline', async () => {
+  const { R2ObjectStorageProvider } = require('./infrastructure/R2ObjectStorageProvider');
+  let getDisposition = '';
+
+  const mockTransport = {
+    createUploadUrl: async () => 'https://mock',
+    createDownloadUrl: async (b: string, k: string, d: string | undefined, e: number) => {
+      getDisposition = d || '';
+      return 'https://mock';
+    },
+    headObject: async () => ({ exists: true }),
+    deleteObject: async () => {},
+    getObjectBody: async () => new Uint8Array(),
+  };
+
+  const config = {
+    accountId: 'test',
+    accessKeyId: 'test',
+    secretAccessKey: 'test',
+    bucketName: 'b',
+    uploadUrlTtlSeconds: 600,
+    downloadUrlTtlSeconds: 300,
+  };
+
+  const provider = new R2ObjectStorageProvider(config, mockTransport);
+
+  await provider.createPreviewUrl({ key: 'test.pdf', expiresInSeconds: 100, previewFileName: 'test.pdf' });
+  assert.ok(getDisposition.includes('inline'));
+  assert.ok(getDisposition.includes('test.pdf'));
 });

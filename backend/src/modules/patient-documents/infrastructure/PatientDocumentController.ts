@@ -107,6 +107,28 @@ export class PatientDocumentController {
     }
   }
 
+  static async getPreviewUrl(req: Request, res: Response, next: NextFunction) {
+    try {
+      const ctx = (req as AuthenticatedRequest).authContext;
+      const id = z.string().uuid().parse(req.params.id);
+      const service = getService();
+
+      const result = await service.getPreviewUrl(
+        ctx.clinicId,
+        ctx.userId,
+        id
+      );
+
+      res.status(200).json(result);
+    } catch (error) {
+      if (error instanceof ZodError) {
+        next(new AppError('INVALID_INPUT', 'Datos de entrada inválidos', 400));
+        return;
+      }
+      next(error);
+    }
+  }
+
   static async deleteDocument(req: Request, res: Response, next: NextFunction) {
     try {
       const ctx = (req as AuthenticatedRequest).authContext;

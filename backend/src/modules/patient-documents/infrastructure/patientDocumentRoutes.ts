@@ -20,6 +20,12 @@ patientDocumentRoutes.get(
   PatientDocumentController.getDownloadUrl
 );
 
+patientDocumentRoutes.get(
+  '/:id/preview',
+  requireRoles(['OWNER', 'PROFESSIONAL']),
+  PatientDocumentController.getPreviewUrl
+);
+
 // validateOrigin para mutaciones
 patientDocumentRoutes.post(
   '/uploads',

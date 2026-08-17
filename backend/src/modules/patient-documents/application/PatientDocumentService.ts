@@ -248,6 +248,49 @@ export class PatientDocumentService {
     return { downloadUrl };
   }
 
+  async getPreviewUrl(
+    clinicId: string,
+    userId: string,
+    documentId: string
+  ) {
+    const document = await this.prisma.findDocumentById(clinicId, documentId);
+
+    if (!document) {
+      throw new AppError('NOT_FOUND', 'Documento no encontrado.', 404);
+    }
+
+    if (document.status !== 'ACTIVE') {
+      throw new AppError('NOT_FOUND', 'El documento no está disponible para previsualización.', 404);
+    }
+
+    const ALLOWED_PREVIEW_MIMES = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+    if (!ALLOWED_PREVIEW_MIMES.includes(document.mimeType)) {
+      throw new AppError('BAD_REQUEST', 'El tipo de archivo no soporta previsualización en línea.', 400);
+    }
+
+    const previewUrl = await this.storageProvider.createPreviewUrl({
+      key: document.storageKey,
+      expiresInSeconds: this.storageConfig.downloadUrlTtlSeconds,
+      previewFileName: document.originalFileName,
+    });
+
+    await this.prisma.createAuditEvent({
+      clinicId,
+      actorUserId: userId,
+      action: 'PATIENT_DOCUMENT_PREVIEWED',
+      entityType: 'PatientDocument',
+      entityId: documentId,
+      metadata: {
+        category: document.category,
+        mimeType: document.mimeType,
+        sizeBytes: document.sizeBytes,
+        encounterLinked: !!document.clinicalEncounterId,
+      },
+    });
+
+    return { previewUrl };
+  }
+
   async deleteDocument(
     clinicId: string,
     membershipId: string,

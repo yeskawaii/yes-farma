@@ -4,6 +4,7 @@ import type {
   UploadDocumentInput,
   UploadUrlResponse,
   DownloadUrlResponse,
+  PreviewUrlResponse,
 } from './types';
 
 export const patientDocumentsApi = {
@@ -21,6 +22,10 @@ export const patientDocumentsApi = {
 
   getDownloadUrl: async (id: string): Promise<DownloadUrlResponse> => {
     return apiClient.get<DownloadUrlResponse>(`/patient-documents/${id}/download`);
+  },
+
+  getPreviewUrl: async (id: string): Promise<PreviewUrlResponse> => {
+    return apiClient.get<PreviewUrlResponse>(`/patient-documents/${id}/preview`);
   },
 
   deleteDocument: async (id: string): Promise<{ success: boolean }> => {

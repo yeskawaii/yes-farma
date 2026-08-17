@@ -7,6 +7,8 @@ import { patientDocumentsApi } from '../api';
 import type { PatientDocument, DocumentCategory } from '../types';
 import { useAuth } from '../../../core/auth/AuthProvider';
 import { UploadDocumentModal } from './UploadDocumentModal';
+import { DocumentPreviewModal } from './DocumentPreviewModal';
+import { Eye } from 'lucide-react';
 import { Modal } from '../../../shared/components/Modal/Modal';
 
 interface PatientDocumentListProps {
@@ -36,6 +38,7 @@ export function PatientDocumentList({ patientId }: PatientDocumentListProps) {
   const [documentToDelete, setDocumentToDelete] = useState<PatientDocument | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [previewDocument, setPreviewDocument] = useState<PatientDocument | null>(null);
 
   const fetchDocuments = useCallback(async () => {
     if (!canManage) {
@@ -201,6 +204,15 @@ export function PatientDocumentList({ patientId }: PatientDocumentListProps) {
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition-opacity">
+                      {['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(doc.mimeType) && (
+                        <button
+                          onClick={() => setPreviewDocument(doc)}
+                          className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                          title="Ver"
+                        >
+                          <Eye size={16} />
+                        </button>
+                      )}
                       <button
                         onClick={() => handleDownload(doc)}
                         disabled={downloadingId === doc.id}
@@ -233,6 +245,13 @@ export function PatientDocumentList({ patientId }: PatientDocumentListProps) {
             setShowUploadModal(false);
             fetchDocuments();
           }}
+        />
+      )}
+
+      {previewDocument && (
+        <DocumentPreviewModal
+          document={previewDocument}
+          onClose={() => setPreviewDocument(null)}
         />
       )}
 
