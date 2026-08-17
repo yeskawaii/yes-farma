@@ -66,7 +66,7 @@ export function DocumentPreviewModal({ document, onClose }: DocumentPreviewModal
 
   return (
     <Modal onClose={onClose} closeOnBackdrop={true} closeOnEscape={true}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl overflow-hidden flex flex-col max-h-[90dvh] sm:max-h-[85vh]">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-6xl h-[92dvh] sm:h-[88dvh] overflow-hidden flex flex-col">
         <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between shrink-0 gap-4">
           <div className="min-w-0 flex-1">
             <h3 className="text-lg font-bold text-slate-900 truncate" title={document.originalFileName}>
@@ -94,7 +94,7 @@ export function DocumentPreviewModal({ document, onClose }: DocumentPreviewModal
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto bg-slate-50 flex items-center justify-center relative min-h-[300px]">
+        <div className="flex-1 min-h-0 overflow-hidden bg-slate-50 flex items-center justify-center relative">
           {loading ? (
             <div className="flex flex-col items-center text-slate-400 gap-3">
               <Loader2 className="animate-spin" size={32} />
@@ -126,7 +126,7 @@ export function DocumentPreviewModal({ document, onClose }: DocumentPreviewModal
               {isPdf && (
                 <iframe
                   src={previewUrl}
-                  className="w-full h-full border-0"
+                  className="block w-full h-full border-0 bg-white"
                   title={document.originalFileName}
                 />
               )}
