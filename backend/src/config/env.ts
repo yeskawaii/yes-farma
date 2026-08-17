@@ -9,6 +9,7 @@ const envSchema = z.object({
   SESSION_COOKIE_NAME: z.string().default('yesfarma_sid'),
   SESSION_TTL_HOURS: z.string().transform(Number).default('24'),
   PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().min(5).max(120).default(30),
+  PWNED_PASSWORDS_TIMEOUT_MS: z.coerce.number().int().min(500).max(10000).default(3000),
   R2_ACCOUNT_ID: z.string().min(1).optional(),
   R2_ACCESS_KEY_ID: z.string().min(1).optional(),
   R2_SECRET_ACCESS_KEY: z.string().min(1).optional(),

@@ -10,6 +10,8 @@ import {
 const USER_ID = '11111111-1111-4111-8111-111111111111';
 const TOKEN_ID = '22222222-2222-4222-8222-222222222222';
 
+const allowCompromiseCheck = async (_password: string): Promise<void> => {};
+
 function installPrismaStubs() {
   const root = prisma as any;
 
@@ -202,6 +204,7 @@ test('resetPassword consume token, cambia a hash v2 y revoca todas las sesiones'
     await PasswordRecoveryService.resetPassword(
       rawToken,
       'NewSecurePassword123!',
+      allowCompromiseCheck,
     );
 
     assert.equal(stubs.calls.consumed, 1);
@@ -224,6 +227,56 @@ test('resetPassword consume token, cambia a hash v2 y revoca todas las sesiones'
       ['PASSWORD_RESET_COMPLETED'],
     );
   } finally {
+    stubs.restore();
+  }
+});
+
+test('resetPassword rechaza contraseña comprometida antes de scrypt y sin consumir token', async () => {
+  const stubs = installPrismaStubs();
+  const rawToken = CryptoService.generatePasswordResetToken();
+
+  stubs.setToken({
+    id: TOKEN_ID,
+    userId: USER_ID,
+    usedAt: null,
+    expiresAt: new Date(Date.now() + 10 * 60_000),
+  });
+
+  const originalHashPassword = CryptoService.hashPassword;
+  let compromiseChecks = 0;
+  let hashCalls = 0;
+
+  (CryptoService as any).hashPassword = async () => {
+    hashCalls += 1;
+    return 'v2:should-not-be-created';
+  };
+
+  try {
+    await assert.rejects(
+      PasswordRecoveryService.resetPassword(
+        rawToken,
+        'CompromisedPassword123!',
+        async () => {
+          compromiseChecks += 1;
+
+          const error = Object.assign(
+            new Error('compromised password'),
+            { code: 'COMPROMISED_PASSWORD' },
+          );
+
+          throw error;
+        },
+      ),
+      (error: any) => error?.code === 'COMPROMISED_PASSWORD',
+    );
+
+    assert.equal(compromiseChecks, 1);
+    assert.equal(hashCalls, 0);
+    assert.equal(stubs.calls.consumed, 0);
+    assert.equal(stubs.calls.invalidatedOtherTokens, 0);
+    assert.equal(stubs.calls.revokedSessions, 0);
+  } finally {
+    (CryptoService as any).hashPassword = originalHashPassword;
     stubs.restore();
   }
 });
@@ -252,6 +305,7 @@ test('resetPassword evalúa expiración nuevamente después de scrypt', async ()
     await PasswordRecoveryService.resetPassword(
       rawToken,
       'NewSecurePassword123!',
+      allowCompromiseCheck,
     );
 
     assert.ok(stubs.calls.consumeExpiresAfter);
@@ -280,6 +334,7 @@ test('resetPassword rechaza un token expirado antes de abrir transacción sensib
       PasswordRecoveryService.resetPassword(
         'expired-token',
         'NewSecurePassword123!',
+        allowCompromiseCheck,
       ),
       (error: any) => error?.code === 'INVALID_RESET_TOKEN',
     );
@@ -306,6 +361,7 @@ test('resetPassword rechaza un token ya utilizado', async () => {
       PasswordRecoveryService.resetPassword(
         'used-token',
         'NewSecurePassword123!',
+        allowCompromiseCheck,
       ),
       (error: any) => error?.code === 'INVALID_RESET_TOKEN',
     );
@@ -333,6 +389,7 @@ test('resetPassword rechaza una carrera cuando otro proceso consumió primero el
       PasswordRecoveryService.resetPassword(
         'concurrent-token',
         'NewSecurePassword123!',
+        allowCompromiseCheck,
       ),
       (error: any) => error?.code === 'INVALID_RESET_TOKEN',
     );

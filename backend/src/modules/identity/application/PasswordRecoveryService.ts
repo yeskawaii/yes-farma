@@ -3,6 +3,7 @@ import { env } from '../../../config/env';
 import { AppError } from '../../../shared/errors/AppError';
 import { CryptoService } from '../infrastructure/CryptoService';
 import { PasswordPolicy } from './PasswordPolicy';
+import { PwnedPasswordService } from '../infrastructure/PwnedPasswordService';
 
 export interface PasswordResetDelivery {
   email: string;
@@ -13,6 +14,10 @@ export interface PasswordResetDelivery {
 
 export type PasswordResetDeliveryHandler = (
   delivery: PasswordResetDelivery,
+) => Promise<void>;
+
+export type PasswordCompromiseChecker = (
+  password: string,
 ) => Promise<void>;
 
 const invalidResetTokenError = () =>
@@ -95,6 +100,8 @@ export class PasswordRecoveryService {
   static async resetPassword(
     rawToken: string,
     newPassword: string,
+    compromiseChecker: PasswordCompromiseChecker = (password) =>
+      PwnedPasswordService.assertNotCompromised(password),
   ): Promise<void> {
     const tokenHash = CryptoService.hashPasswordResetToken(rawToken);
     const now = new Date();
@@ -114,6 +121,10 @@ export class PasswordRecoveryService {
     }
 
     PasswordPolicy.validateNewPassword(newPassword);
+
+    // La comprobación de contraseña comprometida ocurre antes de scrypt
+    // y antes de consumir el token. Si HIBP no está disponible, falla cerrado.
+    await compromiseChecker(newPassword);
 
     // El hash costoso se calcula fuera de la transacción para no mantener
     // locks de BD durante scrypt.
