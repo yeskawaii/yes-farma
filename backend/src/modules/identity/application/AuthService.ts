@@ -29,6 +29,36 @@ export class AuthService {
       throw new AppError('NO_ACTIVE_MEMBERSHIPS', 'No tienes membresías activas.', 403);
     }
 
+    if (CryptoService.passwordNeedsRehash(user.passwordHash)) {
+      const upgradedPasswordHash = await CryptoService.hashPassword(passwordRaw);
+
+      const upgradeResult = await prisma.user.updateMany({
+        where: {
+          id: user.id,
+          passwordHash: user.passwordHash,
+        },
+        data: {
+          passwordHash: upgradedPasswordHash,
+        },
+      });
+
+      // A concurrent password change/reset may have won the race.
+      // Never overwrite it with a hash derived from the old credential.
+      if (upgradeResult.count === 0) {
+        const currentUser = await prisma.user.findUnique({
+          where: { id: user.id },
+          select: { passwordHash: true },
+        });
+
+        if (
+          !currentUser ||
+          !(await CryptoService.verifyPassword(passwordRaw, currentUser.passwordHash))
+        ) {
+          throw new AppError('INVALID_CREDENTIALS', 'Credenciales incorrectas.', 401);
+        }
+      }
+    }
+
     let activeClinicId: string | null = null;
     if (user.memberships.length === 1) {
       const firstMembership = user.memberships[0];
