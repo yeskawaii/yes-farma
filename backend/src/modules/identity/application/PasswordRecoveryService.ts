@@ -4,17 +4,7 @@ import { AppError } from '../../../shared/errors/AppError';
 import { CryptoService } from '../infrastructure/CryptoService';
 import { PasswordPolicy } from './PasswordPolicy';
 import { PwnedPasswordService } from '../infrastructure/PwnedPasswordService';
-
-export interface PasswordResetDelivery {
-  email: string;
-  firstName: string;
-  rawToken: string;
-  expiresAt: Date;
-}
-
-export type PasswordResetDeliveryHandler = (
-  delivery: PasswordResetDelivery,
-) => Promise<void>;
+import { TransactionalEmailService } from '../infrastructure/TransactionalEmailService';
 
 export type PasswordCompromiseChecker = (
   password: string,
@@ -30,7 +20,7 @@ const invalidResetTokenError = () =>
 export class PasswordRecoveryService {
   static async requestReset(
     email: string,
-    deliver: PasswordResetDeliveryHandler,
+    emailService: TransactionalEmailService,
   ): Promise<void> {
     const normalizedEmail = email.trim().toLowerCase();
 
@@ -88,11 +78,15 @@ export class PasswordRecoveryService {
       });
     });
 
-    // El raw token nunca se persiste y no debe regresar al cliente HTTP.
-    await deliver({
-      email: user.email,
+    // El raw token nunca se persiste ni regresa al cliente HTTP.
+    // Solo se incorpora al enlace destinado al correo transaccional.
+    const resetUrl = new URL('/reset-password', env.APP_ORIGIN);
+    resetUrl.searchParams.set('token', rawToken);
+
+    await emailService.sendPasswordReset({
+      to: user.email,
       firstName: user.firstName,
-      rawToken,
+      resetUrl: resetUrl.toString(),
       expiresAt,
     });
   }

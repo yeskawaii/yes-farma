@@ -2,10 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { prisma } from '../../../infrastructure/database/prisma';
 import { CryptoService } from '../infrastructure/CryptoService';
+import { PasswordRecoveryService } from './PasswordRecoveryService';
 import {
-  PasswordRecoveryService,
-  PasswordResetDelivery,
-} from './PasswordRecoveryService';
+  PasswordResetEmailMessage,
+  TransactionalEmailService,
+} from '../infrastructure/TransactionalEmailService';
 
 const USER_ID = '11111111-1111-4111-8111-111111111111';
 const TOKEN_ID = '22222222-2222-4222-8222-222222222222';
@@ -134,27 +135,39 @@ test('requestReset crea solo hash persistido y entrega el token crudo fuera de B
     status: 'ACTIVE',
   });
 
-  let delivery: PasswordResetDelivery | undefined;
+  let delivery: PasswordResetEmailMessage | undefined;
+
+  const emailService: TransactionalEmailService = {
+    async sendPasswordReset(message) {
+      delivery = message;
+    },
+  };
 
   try {
     await PasswordRecoveryService.requestReset(
       '  OWNER@EXAMPLE.TEST ',
-      async (value) => {
-        delivery = value;
-      },
+      emailService,
     );
 
     assert.ok(delivery);
-    assert.equal(delivery.email, 'owner@example.test');
-    assert.ok(delivery.rawToken.length > 20);
+    assert.equal(delivery.to, 'owner@example.test');
+
+    const url = new URL(delivery.resetUrl);
+    const rawToken = url.searchParams.get('token');
+
+    assert.equal(url.origin, new URL(process.env.APP_ORIGIN ?? 'http://localhost:3000').origin);
+    assert.equal(url.pathname, '/reset-password');
+
+    assert.ok(rawToken);
+    assert.ok(rawToken.length > 20);
 
     assert.equal(stubs.calls.invalidatedBeforeCreate, 1);
     assert.ok(stubs.calls.createdTokenHash);
-    assert.notEqual(stubs.calls.createdTokenHash, delivery.rawToken);
+    assert.notEqual(stubs.calls.createdTokenHash, rawToken);
 
     assert.equal(
       stubs.calls.createdTokenHash,
-      CryptoService.hashPasswordResetToken(delivery.rawToken),
+      CryptoService.hashPasswordResetToken(rawToken),
     );
 
     assert.deepEqual(
@@ -173,12 +186,16 @@ test('requestReset no entrega token ni crea credencial cuando el email no existe
 
   let delivered = false;
 
+  const emailService: TransactionalEmailService = {
+    async sendPasswordReset() {
+      delivered = true;
+    },
+  };
+
   try {
     await PasswordRecoveryService.requestReset(
       'missing@example.test',
-      async () => {
-        delivered = true;
-      },
+      emailService,
     );
 
     assert.equal(delivered, false);
