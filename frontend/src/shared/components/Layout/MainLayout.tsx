@@ -24,7 +24,7 @@ export function MainLayout() {
             <div className="w-8 h-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center shadow-sm border border-blue-100">
               <HeartPulse size={18} />
             </div>
-            <span className="font-bold text-lg text-slate-900 tracking-tight">Yes Farma</span>
+            <span className="font-bold text-lg text-slate-900 tracking-tight">Yeskira Salud</span>
           </div>
           <div className="flex items-center gap-1">
             <button className="text-slate-500 w-9 h-9 rounded-full flex items-center justify-center hover:bg-slate-50 transition-colors">

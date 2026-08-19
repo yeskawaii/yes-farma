@@ -32,7 +32,7 @@ test('Resend adapter envía password reset con API y formato esperado', async ()
   const service = new ResendTransactionalEmailService(
     {
       apiKey: 're_test_secret',
-      from: 'Yes Farma <no-reply@example.test>',
+      from: 'Yeskira Salud <no-reply@example.test>',
     },
     fakeFetch,
   );
@@ -74,7 +74,7 @@ test('Resend adapter envía password reset con API y formato esperado', async ()
 
   assert.equal(
     payload.from,
-    'Yes Farma <no-reply@example.test>',
+    'Yeskira Salud <no-reply@example.test>',
   );
 
   assert.deepEqual(
@@ -84,7 +84,7 @@ test('Resend adapter envía password reset con API y formato esperado', async ()
 
   assert.equal(
     payload.subject,
-    'Restablece tu contraseña de Yes Farma',
+    'Restablece tu contraseña de Yeskira Salud',
   );
 
   assert.ok(
@@ -117,7 +117,7 @@ test('Resend adapter escapa contenido HTML dinámico', async () => {
   const service = new ResendTransactionalEmailService(
     {
       apiKey: 're_test_secret',
-      from: 'Yes Farma <no-reply@example.test>',
+      from: 'Yeskira Salud <no-reply@example.test>',
     },
     fakeFetch,
   );
@@ -156,7 +156,7 @@ test('Resend adapter usa una idempotency key estable para el mismo mensaje', asy
   const service = new ResendTransactionalEmailService(
     {
       apiKey: 're_test_secret',
-      from: 'Yes Farma <no-reply@example.test>',
+      from: 'Yeskira Salud <no-reply@example.test>',
     },
     fakeFetch,
   );
@@ -183,7 +183,7 @@ test('Resend adapter falla cerrado ante error HTTP', async () => {
   const service = new ResendTransactionalEmailService(
     {
       apiKey: 're_test_secret',
-      from: 'Yes Farma <no-reply@example.test>',
+      from: 'Yeskira Salud <no-reply@example.test>',
     },
     fakeFetch,
   );
@@ -216,7 +216,7 @@ test(
     const service = new ResendTransactionalEmailService(
       {
         apiKey: 're_test_secret',
-        from: 'Yes Farma <no-reply@example.test>',
+        from: 'Yeskira Salud <no-reply@example.test>',
         timeoutMs: 20,
       },
       fakeFetch,

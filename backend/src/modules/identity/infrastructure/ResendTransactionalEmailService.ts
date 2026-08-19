@@ -73,12 +73,12 @@ export class ResendTransactionalEmailService
     const safeFirstName = escapeHtml(message.firstName);
     const safeResetUrl = escapeHtml(message.resetUrl);
 
-    const subject = 'Restablece tu contraseña de Yes Farma';
+    const subject = 'Restablece tu contraseña de Yeskira Salud';
 
     const text = [
       `Hola ${message.firstName},`,
       '',
-      'Recibimos una solicitud para restablecer tu contraseña de Yes Farma.',
+      'Recibimos una solicitud para restablecer tu contraseña de Yeskira Salud.',
       '',
       `Abre este enlace para continuar: ${message.resetUrl}`,
       '',
@@ -88,7 +88,7 @@ export class ResendTransactionalEmailService
 
     const html = [
       `<p>Hola ${safeFirstName},</p>`,
-      '<p>Recibimos una solicitud para restablecer tu contraseña de Yes Farma.</p>',
+      '<p>Recibimos una solicitud para restablecer tu contraseña de Yeskira Salud.</p>',
       `<p><a href="${safeResetUrl}">Restablecer contraseña</a></p>`,
       '<p>Si no solicitaste este cambio, puedes ignorar este correo.</p>',
       '<p>El enlace es temporal y solo puede utilizarse una vez.</p>',

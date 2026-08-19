@@ -54,7 +54,7 @@ export function RouteErrorPage() {
         </div>
 
         <p className="mt-6 text-xs text-slate-400">
-          Yes Farma
+          Yeskira Salud
         </p>
       </section>
     </main>

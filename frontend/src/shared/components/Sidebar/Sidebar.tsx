@@ -12,7 +12,7 @@ export function Sidebar() {
           <HeartPulse size={20} />
         </div>
         <div>
-          <h1 className="font-bold text-lg text-slate-900 leading-tight tracking-tight">Yes Farma</h1>
+          <h1 className="font-bold text-lg text-slate-900 leading-tight tracking-tight">Yeskira Salud</h1>
           <p className="text-[10px] text-blue-600 font-bold uppercase tracking-widest">Portal Clínico</p>
         </div>
       </div>

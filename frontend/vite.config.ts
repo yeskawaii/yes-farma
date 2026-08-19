@@ -13,11 +13,11 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
       manifest: {
-        name: 'Yes Farma App',
-        short_name: 'YesFarma',
+        name: 'Yeskira Salud',
+        short_name: 'Yeskira',
         lang: 'es-MX',
         dir: 'ltr',
-        description: 'Aplicación integral para la gestión de farmacias, expedientes médicos y agendamiento.',
+        description: 'Plataforma clínica para la gestión segura de pacientes, expedientes médicos y agenda.',
         theme_color: '#ffffff',
         icons: [
           {

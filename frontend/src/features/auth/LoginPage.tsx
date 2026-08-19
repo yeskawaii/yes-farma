@@ -56,7 +56,7 @@ export function LoginPage() {
           <div className="w-20 h-20 mb-8 bg-white rounded-2xl flex items-center justify-center shadow-lg border border-blue-100">
             <HeartPulse className="text-[var(--primary)]" size={40} />
           </div>
-          <h1 className="text-4xl font-bold mb-4 text-[#0F172A] tracking-tight">Portal Clínico Yes Farma</h1>
+          <h1 className="text-4xl font-bold mb-4 text-[#0F172A] tracking-tight">Portal Clínico Yeskira Salud</h1>
           <p className="text-lg text-[#334155] leading-relaxed">
             Gestión médica profesional, segura y centralizada para tu consultorio.
           </p>
@@ -72,7 +72,7 @@ export function LoginPage() {
             <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center shadow-sm border border-blue-100">
               <HeartPulse className="text-[var(--primary)]" size={32} />
             </div>
-            <h1 className="text-3xl font-bold text-[var(--text-main)] tracking-tight">Yes Farma</h1>
+            <h1 className="text-3xl font-bold text-[var(--text-main)] tracking-tight">Yeskira Salud</h1>
             <p className="text-base text-[var(--text-muted)]">Portal Clínico</p>
           </div>
 
