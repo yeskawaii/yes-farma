@@ -1,13 +1,24 @@
-import { CookieOptions, Request, Response, NextFunction } from 'express';
+import type { CookieOptions, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { AuthService } from '../application/AuthService';
+import { PasswordRecoveryService } from '../application/PasswordRecoveryService';
 import { CryptoService } from '../infrastructure/CryptoService';
+import { getTransactionalEmailService } from '../infrastructure/TransactionalEmailProvider';
 import { env } from '../../../config/env';
 import { prisma } from '../../../infrastructure/database/prisma';
 
 const loginSchema = z.object({
   email: z.string().email('Email inválido.'),
   password: z.string().min(1, 'La contraseña es requerida.'),
+});
+
+const forgotPasswordSchema = z.object({
+  email: z.string().email('Email inválido.'),
+});
+
+const resetPasswordSchema = z.object({
+  token: z.string().min(1, 'El token es requerido.'),
+  newPassword: z.string().min(1, 'La contraseña es requerida.'),
 });
 
 const sessionCookieOptions: CookieOptions = {
@@ -52,6 +63,72 @@ export const authController = {
 
       res.clearCookie(env.SESSION_COOKIE_NAME, sessionCookieOptions);
       res.status(200).json({ message: 'Logout exitoso.' });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  forgotPassword: async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => {
+    try {
+      const parsed = forgotPasswordSchema.safeParse(req.body);
+
+      if (!parsed.success) {
+        res.status(400).json({
+          error: {
+            code: 'INVALID_INPUT',
+            message: 'Datos de entrada inválidos.',
+          },
+        });
+        return;
+      }
+
+      const emailService = getTransactionalEmailService();
+
+      await PasswordRecoveryService.requestReset(
+        parsed.data.email,
+        emailService,
+      );
+
+      // La respuesta es deliberadamente idéntica exista o no la cuenta.
+      res.status(200).json({
+        message:
+          'Si existe una cuenta asociada a ese correo, enviaremos instrucciones para restablecer la contraseña.',
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  resetPassword: async (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => {
+    try {
+      const parsed = resetPasswordSchema.safeParse(req.body);
+
+      if (!parsed.success) {
+        res.status(400).json({
+          error: {
+            code: 'INVALID_INPUT',
+            message: 'Datos de entrada inválidos.',
+          },
+        });
+        return;
+      }
+
+      await PasswordRecoveryService.resetPassword(
+        parsed.data.token,
+        parsed.data.newPassword,
+      );
+
+      res.status(200).json({
+        message: 'Contraseña actualizada correctamente.',
+      });
     } catch (error) {
       next(error);
     }

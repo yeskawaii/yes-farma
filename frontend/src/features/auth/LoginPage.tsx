@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { ChevronRight, HeartPulse, Activity } from 'lucide-react';
 import { useAuth } from '../../core/auth/AuthProvider';
 
@@ -113,6 +113,15 @@ export function LoginPage() {
                 required
                 disabled={isLoading}
               />
+            </div>
+
+            <div className="flex justify-end">
+              <Link
+                to="/forgot-password"
+                className="text-sm font-medium text-[var(--primary)] hover:underline"
+              >
+                ¿Olvidaste tu contraseña?
+              </Link>
             </div>
 
             <button type="submit" className="btn-primary mt-4" disabled={isLoading}>
