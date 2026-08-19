@@ -67,13 +67,12 @@ export function ResetPasswordPage() {
           Elige una nueva contraseña
         </h1>
         <p className="mt-2 text-sm leading-relaxed text-[var(--text-muted)]">
-          Debe tener entre 15 y 128 caracteres y no aparecer en bases de datos
-          conocidas de contraseñas comprometidas.
+          Usa una contraseña de al menos 12 caracteres que no hayas usado en otros sitios.
         </p>
 
         {!token && (
           <div className="mt-6 p-3.5 bg-red-50 text-red-700 border border-red-200 rounded-xl text-sm font-medium">
-            El enlace de recuperación es inválido o está incompleto.
+            Este enlace ya no es válido. Solicita uno nuevo para continuar.
           </div>
         )}
 
@@ -113,8 +112,7 @@ export function ResetPasswordPage() {
                   value={newPassword}
                   onChange={(event) => setNewPassword(event.target.value)}
                   required
-                  minLength={15}
-                  maxLength={128}
+                  minLength={12}
                   disabled={isLoading || !token}
                   autoComplete="new-password"
                 />
@@ -131,8 +129,7 @@ export function ResetPasswordPage() {
                 value={confirmPassword}
                 onChange={(event) => setConfirmPassword(event.target.value)}
                 required
-                minLength={15}
-                maxLength={128}
+                minLength={12}
                 disabled={isLoading || !token}
                 autoComplete="new-password"
               />

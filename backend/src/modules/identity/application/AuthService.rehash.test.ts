@@ -147,3 +147,27 @@ test('AuthService.login no recalcula una contraseña que ya está en v2', async 
     stubs.restore();
   }
 });
+
+test('AuthService.login permite autenticar y actualizar una contraseña legacy menor de 12 caracteres', async () => {
+  const password = 'legacy8!'; // 8 caracteres, válido en v1
+  const legacyHash = await makeLegacyV1Hash(password);
+  const stubs = installDbStubs(legacyHash);
+
+  try {
+    const result = await AuthService.login(
+      'owner@example.test',
+      password,
+      '127.0.0.1',
+      'test-agent',
+    );
+
+    assert.ok(result.rawToken);
+    assert.equal(stubs.getUpdateManyCalls(), 1);
+
+    const upgradedHash = stubs.getUpgradedPasswordHash();
+    assert.ok(upgradedHash);
+    assert.equal(await CryptoService.verifyPassword(password, upgradedHash), true);
+  } finally {
+    stubs.restore();
+  }
+});

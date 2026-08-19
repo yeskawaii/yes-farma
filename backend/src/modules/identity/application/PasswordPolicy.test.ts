@@ -2,15 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PasswordPolicy } from './PasswordPolicy';
 
-test('PasswordPolicy acepta 15 caracteres sin reglas de composición', () => {
+test('PasswordPolicy acepta 12 caracteres sin reglas de composición', () => {
   assert.doesNotThrow(() => {
-    PasswordPolicy.validateNewPassword('abcdefghijklmn ');
+    PasswordPolicy.validateNewPassword('abcdefghijkl');
   });
 });
 
-test('PasswordPolicy rechaza menos de 15 caracteres', () => {
+test('PasswordPolicy rechaza menos de 12 caracteres', () => {
   assert.throws(
-    () => PasswordPolicy.validateNewPassword('short-password'),
+    () => PasswordPolicy.validateNewPassword('short-pass'),
     (error: any) => error?.code === 'WEAK_PASSWORD',
   );
 });

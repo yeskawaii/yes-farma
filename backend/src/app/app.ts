@@ -14,7 +14,7 @@ import { errorHandler } from '../shared/errors/errorHandler';
 export const createApp = () => {
   const app = express();
 
-  app.set('trust proxy', env.TRUST_PROXY === '1' || env.TRUST_PROXY === 'true');
+  app.set('trust proxy', env.TRUST_PROXY || false);
 
   app.use(helmet());
   app.use(

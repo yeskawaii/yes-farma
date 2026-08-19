@@ -27,7 +27,7 @@ const unavailableError = () =>
 const compromisedError = () =>
   new AppError(
     'COMPROMISED_PASSWORD',
-    'Esta contraseña aparece en bases de datos de contraseñas comprometidas. Elige una diferente.',
+    'Esa contraseña no es segura. Prueba con una diferente.',
     400,
   );
 

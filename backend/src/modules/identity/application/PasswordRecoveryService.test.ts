@@ -7,6 +7,7 @@ import {
   PasswordResetEmailMessage,
   TransactionalEmailService,
 } from '../infrastructure/TransactionalEmailService';
+import { AppError } from '../../../shared/errors/AppError';
 
 const USER_ID = '11111111-1111-4111-8111-111111111111';
 const TOKEN_ID = '22222222-2222-4222-8222-222222222222';
@@ -23,6 +24,8 @@ function installPrismaStubs() {
     transaction: root.$transaction,
     userFindUnique: userDelegate.findUnique,
     resetFindUnique: resetDelegate.findUnique,
+    rootUpdateMany: root.passwordResetToken?.updateMany,
+    rootAuditCreate: root.auditEvent?.create,
   };
 
   const calls = {
@@ -31,16 +34,20 @@ function installPrismaStubs() {
     createdExpiresAt: undefined as Date | undefined,
     auditActions: [] as string[],
     auditActors: [] as Array<string | null>,
+    auditSuccess: [] as boolean[],
     consumeExpiresAfter: undefined as Date | undefined,
     consumed: 0,
     passwordHash: undefined as string | undefined,
     invalidatedOtherTokens: 0,
     revokedSessions: 0,
+    updateManyCalls: [] as any[],
   };
 
   const tx = {
     passwordResetToken: {
       updateMany: async (args: any) => {
+        calls.updateManyCalls.push(args);
+
         if (args.where?.id === TOKEN_ID) {
           calls.consumed += 1;
           calls.consumeExpiresAfter = args.where?.expiresAt?.gt;
@@ -85,12 +92,15 @@ function installPrismaStubs() {
       create: async (args: any) => {
         calls.auditActions.push(args.data.action);
         calls.auditActors.push(args.data.actorUserId ?? null);
+        calls.auditSuccess.push(args.data.success);
         return { id: '33333333-3333-4333-8333-333333333333' };
       },
     },
   };
 
   root.$transaction = async (callback: any) => callback(tx);
+  root.passwordResetToken.updateMany = tx.passwordResetToken.updateMany;
+  root.auditEvent.create = tx.auditEvent.create;
 
   return {
     calls,
@@ -102,6 +112,8 @@ function installPrismaStubs() {
     },
     setConsumeCount(count: number) {
       tx.passwordResetToken.updateMany = async (args: any) => {
+        calls.updateManyCalls.push(args);
+
         if (args.where?.id === TOKEN_ID) {
           calls.consumed += 1;
           calls.consumeExpiresAfter = args.where?.expiresAt?.gt;
@@ -121,6 +133,12 @@ function installPrismaStubs() {
       root.$transaction = originals.transaction;
       userDelegate.findUnique = originals.userFindUnique;
       resetDelegate.findUnique = originals.resetFindUnique;
+      if (root.passwordResetToken) {
+        root.passwordResetToken.updateMany = originals.rootUpdateMany;
+      }
+      if (root.auditEvent) {
+        root.auditEvent.create = originals.rootAuditCreate;
+      }
     },
   };
 }
@@ -414,6 +432,122 @@ test('resetPassword rechaza una carrera cuando otro proceso consumió primero el
     assert.equal(stubs.calls.consumed, 1);
     assert.equal(stubs.calls.revokedSessions, 0);
   } finally {
+    stubs.restore();
+  }
+});
+
+test('requestReset neutraliza EMAIL_DELIVERY_UNAVAILABLE invalidando solo el token exacto y registrando la auditoría', async () => {
+  const stubs = installPrismaStubs();
+
+  stubs.setUser({
+    id: USER_ID,
+    email: 'owner@example.test',
+    firstName: 'Owner',
+    status: 'ACTIVE',
+  });
+
+  const emailService: TransactionalEmailService = {
+    async sendPasswordReset() {
+      throw new AppError('EMAIL_DELIVERY_UNAVAILABLE', 'Delivery failed', 503);
+    },
+  };
+
+  try {
+    await PasswordRecoveryService.requestReset('owner@example.test', emailService);
+
+    assert.equal(stubs.calls.invalidatedBeforeCreate, 2);
+
+    // El token fue creado exitosamente antes de enviar el email
+    const exactTokenHash = stubs.calls.createdTokenHash;
+    assert.ok(exactTokenHash);
+
+    // Debe haber invalidado el token con updateMany específicamente para ese tokenHash
+    const invalidationCall = stubs.calls.updateManyCalls.find(
+      (call) => call.where?.tokenHash === exactTokenHash && call.where?.usedAt === null
+    );
+    assert.ok(invalidationCall, 'Debe invalidar exactamente el tokenHash generado por esta solicitud (TEST B y C)');
+
+    // Verificar que generó el AuditEvent de falla (TEST E) y success === false
+    const auditIndex = stubs.calls.auditActions.indexOf('PASSWORD_RESET_EMAIL_FAILED');
+    assert.ok(auditIndex >= 0, 'Debe registrar PASSWORD_RESET_EMAIL_FAILED');
+    assert.equal(stubs.calls.auditSuccess[auditIndex], false, 'El evento de auditoría debe tener success === false');
+
+  } finally {
+    stubs.restore();
+  }
+});
+
+test('requestReset propaga otros errores inesperados del email service (TEST D)', async () => {
+  const stubs = installPrismaStubs();
+
+  stubs.setUser({
+    id: USER_ID,
+    email: 'owner@example.test',
+    firstName: 'Owner',
+    status: 'ACTIVE',
+  });
+
+  const emailService: TransactionalEmailService = {
+    async sendPasswordReset() {
+      throw new Error('Unexpected provider crash');
+    },
+  };
+
+  try {
+    await assert.rejects(
+      PasswordRecoveryService.requestReset('owner@example.test', emailService),
+      /Unexpected provider crash/
+    );
+
+    const exactTokenHash = stubs.calls.createdTokenHash;
+    assert.ok(exactTokenHash, 'Debe haber creado un tokenHash');
+
+    const invalidationCall = stubs.calls.updateManyCalls.find(
+      (call) => call.where?.tokenHash === exactTokenHash && call.where?.usedAt === null
+    );
+    assert.ok(invalidationCall, 'Debe invalidar exactamente el tokenHash generado por esta solicitud ante error inesperado');
+  } finally {
+    stubs.restore();
+  }
+});
+
+test('requestReset asegura invalidación del token huérfano incluso si falla la auditoría', async () => {
+  const stubs = installPrismaStubs();
+
+  stubs.setUser({
+    id: USER_ID,
+    email: 'owner@example.test',
+    firstName: 'Owner',
+    status: 'ACTIVE',
+  });
+
+  const emailService: TransactionalEmailService = {
+    async sendPasswordReset() {
+      throw new AppError('EMAIL_DELIVERY_UNAVAILABLE', 'Delivery failed', 503);
+    },
+  };
+
+  const originalAuditCreate = prisma.auditEvent.create;
+  let auditFailed = false;
+
+  (prisma.auditEvent as any).create = async () => {
+    auditFailed = true;
+    throw new Error('Database disconnected during audit');
+  };
+
+  try {
+    await PasswordRecoveryService.requestReset('owner@example.test', emailService);
+
+    const exactTokenHash = stubs.calls.createdTokenHash;
+    assert.ok(exactTokenHash);
+
+    const invalidationCall = stubs.calls.updateManyCalls.find(
+      (call) => call.where?.tokenHash === exactTokenHash && call.where?.usedAt === null
+    );
+    assert.ok(invalidationCall, 'Debe invalidar el token a pesar de que el audit falló');
+    assert.equal(auditFailed, true);
+  } finally {
+    (prisma.auditEvent as any).create = originalAuditCreate;
     stubs.restore();
   }
 });

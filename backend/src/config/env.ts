@@ -1,11 +1,13 @@
 import { z } from 'zod';
 
+import { trustProxySchema } from './trustProxy';
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.string().transform(Number).default('3000'),
   DATABASE_URL: z.string().url(),
   APP_ORIGIN: z.string().url(),
-  TRUST_PROXY: z.string().default('1'),
+  TRUST_PROXY: trustProxySchema,
   SESSION_COOKIE_NAME: z.string().default('yesfarma_sid'),
   SESSION_TTL_HOURS: z.string().transform(Number).default('24'),
   PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().min(5).max(120).default(30),

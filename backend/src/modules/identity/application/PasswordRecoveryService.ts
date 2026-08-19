@@ -13,7 +13,7 @@ export type PasswordCompromiseChecker = (
 const invalidResetTokenError = () =>
   new AppError(
     'INVALID_RESET_TOKEN',
-    'El enlace de recuperación es inválido o ha expirado.',
+    'Este enlace ya no es válido. Solicita uno nuevo para continuar.',
     400,
   );
 
@@ -83,12 +83,42 @@ export class PasswordRecoveryService {
     const resetUrl = new URL('/reset-password', env.APP_ORIGIN);
     resetUrl.searchParams.set('token', rawToken);
 
-    await emailService.sendPasswordReset({
-      to: user.email,
-      firstName: user.firstName,
-      resetUrl: resetUrl.toString(),
-      expiresAt,
-    });
+    try {
+      await emailService.sendPasswordReset({
+        to: user.email,
+        firstName: user.firstName,
+        resetUrl: resetUrl.toString(),
+        expiresAt,
+      });
+    } catch (error: unknown) {
+      const failedAt = new Date();
+
+      await prisma.passwordResetToken.updateMany({
+        where: { tokenHash, usedAt: null },
+        data: { usedAt: failedAt },
+      });
+
+      if (error instanceof AppError && error.code === 'EMAIL_DELIVERY_UNAVAILABLE') {
+
+        try {
+          await prisma.auditEvent.create({
+            data: {
+              clinicId: null,
+              actorUserId: null,
+              action: 'PASSWORD_RESET_EMAIL_FAILED',
+              entityType: 'User',
+              entityId: user.id,
+              success: false,
+            },
+          });
+        } catch (auditError) {
+          console.error('Error registrando audit event para falla de correo');
+        }
+
+        return;
+      }
+      throw error;
+    }
   }
 
   static async resetPassword(
