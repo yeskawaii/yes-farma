@@ -1,9 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
-import { env } from '../config/env';
+import { allowedAppOriginSet } from '../config/appOrigins';
 import { AppError } from '../shared/errors/AppError';
 
 const unsafeMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-const allowedOrigin = new URL(env.APP_ORIGIN).origin;
 
 const resolveRequestOrigin = (req: Request): string | null => {
   const origin = req.headers.origin;
@@ -37,7 +36,7 @@ export const validateOrigin = (req: Request, res: Response, next: NextFunction) 
 
   const requestOrigin = resolveRequestOrigin(req);
 
-  if (!requestOrigin || requestOrigin !== allowedOrigin) {
+  if (!requestOrigin || !allowedAppOriginSet.has(requestOrigin)) {
     next(new AppError('INVALID_ORIGIN', 'Origen no permitido.', 403));
     return;
   }

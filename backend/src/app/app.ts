@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { env } from '../config/env';
+import { allowedAppOrigins } from '../config/appOrigins';
 import { authRoutes } from '../modules/identity/http/authRoutes';
 import { patientRoutes } from '../modules/patients/infrastructure/patientRoutes';
 import { appointmentRoutes } from '../modules/appointments/infrastructure/appointmentRoutes';
@@ -19,7 +20,7 @@ export const createApp = () => {
   app.use(helmet());
   app.use(
     cors({
-      origin: env.APP_ORIGIN,
+      origin: allowedAppOrigins,
       credentials: true,
     })
   );

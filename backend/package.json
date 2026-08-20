@@ -8,7 +8,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test \"src/**/*.test.ts\"",
+    "test": "tsx --test --import ./src/test-setup.ts \"src/**/*.test.ts\"",
     "bootstrap:owner": "tsx src/scripts/bootstrap-owner.ts"
   },
   "keywords": [],

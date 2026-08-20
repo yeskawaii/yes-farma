@@ -5,11 +5,13 @@ import { AppError } from '../shared/errors/AppError';
 
 process.env.DATABASE_URL = 'postgresql://test:test@localhost:5432/yesfarma_test';
 process.env.APP_ORIGIN = 'https://yes-farma.test';
+process.env.APP_ADDITIONAL_ORIGINS = 'https://legacy.yes-farma.test';
 process.env.NODE_ENV = 'test';
 
 const { validateOrigin } = require('./validateOrigin');
 
 const appOrigin = process.env.APP_ORIGIN;
+const additionalOrigin = process.env.APP_ADDITIONAL_ORIGINS;
 
 const runMiddleware = (
   method: string,
@@ -36,6 +38,14 @@ const runMiddleware = (
 test('validateOrigin permite POST desde APP_ORIGIN', () => {
   const result = runMiddleware('POST', {
     origin: appOrigin,
+  });
+
+  assert.strictEqual(result, undefined);
+});
+
+test('validateOrigin permite POST desde un origen adicional explícito', () => {
+  const result = runMiddleware('POST', {
+    origin: additionalOrigin,
   });
 
   assert.strictEqual(result, undefined);

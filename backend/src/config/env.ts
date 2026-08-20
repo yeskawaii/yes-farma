@@ -2,11 +2,32 @@ import { z } from 'zod';
 
 import { trustProxySchema } from './trustProxy';
 
+const additionalOriginsSchema = z
+  .string()
+  .default('')
+  .refine(
+    (value) =>
+      value
+        .split(',')
+        .map((origin) => origin.trim())
+        .filter(Boolean)
+        .every((origin) => {
+          try {
+            const url = new URL(origin);
+            return url.protocol === 'http:' || url.protocol === 'https:';
+          } catch {
+            return false;
+          }
+        }),
+    'APP_ADDITIONAL_ORIGINS must be a comma-separated list of valid HTTP(S) URLs.',
+  );
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.string().transform(Number).default('3000'),
   DATABASE_URL: z.string().url(),
   APP_ORIGIN: z.string().url(),
+  APP_ADDITIONAL_ORIGINS: additionalOriginsSchema,
   TRUST_PROXY: trustProxySchema,
   SESSION_COOKIE_NAME: z.string().default('yesfarma_sid'),
   SESSION_TTL_HOURS: z.string().transform(Number).default('24'),
