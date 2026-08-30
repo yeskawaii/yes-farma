@@ -393,7 +393,7 @@ export const ToothDetailModal: React.FC<ToothDetailModalProps> = ({
             }`}
           >
             <History size={16} />
-            Historial ({data?.history.length || 0})
+            Historial ({ (data?.history.length || 0) + (data?.assessments?.length || 0) })
           </button>
         </div>
 
@@ -784,105 +784,166 @@ export const ToothDetailModal: React.FC<ToothDetailModalProps> = ({
                   aria-labelledby="tab-btn-history"
                   className="space-y-4"
                 >
-                  {data.history.length === 0 ? (
-                    <div className="text-center py-10 border border-dashed border-slate-200 rounded-2xl bg-slate-50/50 text-slate-500 text-sm font-medium">
-                      No hay registros históricos para esta pieza.
-                    </div>
-                  ) : (
-                    <div className="relative pl-6 space-y-6 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
-                      {data.history.map((item) => (
-                        <div key={item.id} className="relative space-y-2">
-                          <div
-                            className={`absolute -left-6 top-1 w-4 h-4 rounded-full border-2 bg-white ${
-                              item.status === 'ACTIVE'
-                                ? 'border-blue-500 bg-blue-500'
-                                : item.status === 'RESOLVED'
-                                ? 'border-emerald-500 bg-emerald-500'
-                                : 'border-slate-400 bg-slate-400'
-                            }`}
-                          />
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-sm font-bold text-slate-900">
-                              {FINDING_TYPE_LABELS[item.findingType]}
-                            </span>
-                            <span
-                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                item.status === 'ACTIVE'
-                                  ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                                  : item.status === 'RESOLVED'
-                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                  : 'bg-slate-100 text-slate-600 border border-slate-200'
-                              }`}
-                            >
-                              {item.status === 'ACTIVE'
-                                ? 'Activo'
-                                : item.status === 'RESOLVED'
-                                ? 'Resuelto'
-                                : 'Cancelado'}
-                            </span>
-                          </div>
+                  {(() => {
+                    const combinedTimeline = [
+                      ...(data.assessments || []).map((assess) => ({
+                        kind: 'ASSESSMENT' as const,
+                        id: `assess-${assess.id}`,
+                        timestamp: new Date(assess.assessedAt || assess.createdAt).getTime(),
+                        dateStr: assess.assessedAt || assess.createdAt,
+                        assessment: assess
+                      })),
+                      ...(data.history || []).map((finding) => ({
+                        kind: 'FINDING' as const,
+                        id: `finding-${finding.id}`,
+                        timestamp: new Date(finding.createdAt).getTime(),
+                        dateStr: finding.createdAt,
+                        finding: finding
+                      }))
+                    ].sort((a, b) => b.timestamp - a.timestamp);
 
-                          <div className="flex flex-wrap gap-1">
-                            {item.surfaces.map((s) => (
-                              <span
-                                key={s}
-                                className="text-[10px] font-medium px-1.5 py-0.2 bg-slate-100 text-slate-600 rounded"
-                              >
-                                {s === 'WHOLE_TOOTH' ? 'Pieza Completa' : s}
-                              </span>
-                            ))}
-                          </div>
-
-                          {item.notes && (
-                            <p className="text-xs text-slate-600 bg-slate-50 p-2 rounded border border-slate-100">
-                              {item.notes}
-                            </p>
-                          )}
-
-                          {item.status === 'RESOLVED' && (
-                            <div className="text-xs text-emerald-800 bg-emerald-50/60 p-2.5 rounded-xl border border-emerald-100 space-y-1">
-                              <div className="flex items-center justify-between font-semibold">
-                                <span>Resolución Clínica:</span>
-                                {item.resolvedAt && <span>{formatDate(item.resolvedAt)}</span>}
-                              </div>
-                              {item.resolutionNotes && <p>{item.resolutionNotes}</p>}
-                              {item.resolvedBy && (
-                                <p className="text-[10px] text-emerald-600">
-                                  Resuelto por: {item.resolvedBy.name}
-                                </p>
-                              )}
-                            </div>
-                          )}
-
-                          {item.status === 'CANCELLED' && (
-                            <div className="text-xs text-slate-700 bg-slate-100 p-2.5 rounded-xl border border-slate-200 space-y-1">
-                              <div className="flex items-center justify-between font-semibold">
-                                <span>Cancelación / Descarte:</span>
-                                {item.cancelledAt && <span>{formatDate(item.cancelledAt)}</span>}
-                              </div>
-                              {item.cancellationReason && <p>{item.cancellationReason}</p>}
-                              {item.cancelledBy && (
-                                <p className="text-[10px] text-slate-500">
-                                  Cancelado por: {item.cancelledBy.name}
-                                </p>
-                              )}
-                            </div>
-                          )}
-
-                          <div className="text-[11px] text-slate-400 flex flex-wrap gap-x-4 gap-y-1 pt-1">
-                            <span className="flex items-center gap-1">
-                              <Calendar size={12} />
-                              Registrado: {formatDate(item.createdAt)}
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <User size={12} />
-                              Por: {item.createdBy.name}
-                            </span>
-                          </div>
+                    if (combinedTimeline.length === 0) {
+                      return (
+                        <div className="text-center py-10 border border-dashed border-slate-200 rounded-2xl bg-slate-50/50 text-slate-500 text-sm font-medium">
+                          No hay registros históricos para esta pieza.
                         </div>
-                      ))}
-                    </div>
-                  )}
+                      );
+                    }
+
+                    return (
+                      <div className="relative pl-6 space-y-6 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
+                        {combinedTimeline.map((item) => {
+                          if (item.kind === 'ASSESSMENT') {
+                            const assess = item.assessment;
+                            return (
+                              <div key={item.id} className="relative space-y-2">
+                                <div className="absolute -left-6 top-1 w-4 h-4 rounded-full border-2 bg-emerald-500 border-emerald-500" />
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                                    <CheckCircle2 size={16} className="text-emerald-600" />
+                                    Valoración Clínica: Pieza Sana
+                                  </span>
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    Sana
+                                  </span>
+                                </div>
+
+                                {assess.notes && (
+                                  <p className="text-xs text-slate-600 bg-slate-50 p-2 rounded border border-slate-100">
+                                    {assess.notes}
+                                  </p>
+                                )}
+
+                                <div className="text-[11px] text-slate-400 flex flex-wrap gap-x-4 gap-y-1 pt-1">
+                                  <span className="flex items-center gap-1">
+                                    <Calendar size={12} />
+                                    Evaluada: {formatDate(assess.assessedAt)}
+                                  </span>
+                                  <span className="flex items-center gap-1">
+                                    <User size={12} />
+                                    Por: {assess.assessedBy.name}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          const finding = item.finding;
+                          return (
+                            <div key={item.id} className="relative space-y-2">
+                              <div
+                                className={`absolute -left-6 top-1 w-4 h-4 rounded-full border-2 bg-white ${
+                                  finding.status === 'ACTIVE'
+                                    ? 'border-blue-500 bg-blue-500'
+                                    : finding.status === 'RESOLVED'
+                                    ? 'border-emerald-500 bg-emerald-500'
+                                    : 'border-slate-400 bg-slate-400'
+                                }`}
+                              />
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-sm font-bold text-slate-900">
+                                  {FINDING_TYPE_LABELS[finding.findingType]}
+                                </span>
+                                <span
+                                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                    finding.status === 'ACTIVE'
+                                      ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                      : finding.status === 'RESOLVED'
+                                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                      : 'bg-slate-100 text-slate-600 border border-slate-200'
+                                  }`}
+                                >
+                                  {finding.status === 'ACTIVE'
+                                    ? 'Activo'
+                                    : finding.status === 'RESOLVED'
+                                    ? 'Resuelto'
+                                    : 'Cancelado'}
+                                </span>
+                              </div>
+
+                              <div className="flex flex-wrap gap-1">
+                                {finding.surfaces.map((s) => (
+                                  <span
+                                    key={s}
+                                    className="text-[10px] font-medium px-1.5 py-0.2 bg-slate-100 text-slate-600 rounded"
+                                  >
+                                    {s === 'WHOLE_TOOTH' ? 'Pieza Completa' : s}
+                                  </span>
+                                ))}
+                              </div>
+
+                              {finding.notes && (
+                                <p className="text-xs text-slate-600 bg-slate-50 p-2 rounded border border-slate-100">
+                                  {finding.notes}
+                                </p>
+                              )}
+
+                              {finding.status === 'RESOLVED' && (
+                                <div className="text-xs text-emerald-800 bg-emerald-50/60 p-2.5 rounded-xl border border-emerald-100 space-y-1">
+                                  <div className="flex items-center justify-between font-semibold">
+                                    <span>Resolución Clínica:</span>
+                                    {finding.resolvedAt && <span>{formatDate(finding.resolvedAt)}</span>}
+                                  </div>
+                                  {finding.resolutionNotes && <p>{finding.resolutionNotes}</p>}
+                                  {finding.resolvedBy && (
+                                    <p className="text-[10px] text-emerald-600">
+                                      Resuelto por: {finding.resolvedBy.name}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+
+                              {finding.status === 'CANCELLED' && (
+                                <div className="text-xs text-slate-700 bg-slate-100 p-2.5 rounded-xl border border-slate-200 space-y-1">
+                                  <div className="flex items-center justify-between font-semibold">
+                                    <span>Cancelación / Descarte:</span>
+                                    {finding.cancelledAt && <span>{formatDate(finding.cancelledAt)}</span>}
+                                  </div>
+                                  {finding.cancellationReason && <p>{finding.cancellationReason}</p>}
+                                  {finding.cancelledBy && (
+                                    <p className="text-[10px] text-slate-500">
+                                      Cancelado por: {finding.cancelledBy.name}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+
+                              <div className="text-[11px] text-slate-400 flex flex-wrap gap-x-4 gap-y-1 pt-1">
+                                <span className="flex items-center gap-1">
+                                  <Calendar size={12} />
+                                  Registrado: {formatDate(finding.createdAt)}
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <User size={12} />
+                                  Por: {finding.createdBy.name}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </>

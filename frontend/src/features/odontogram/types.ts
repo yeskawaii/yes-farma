@@ -21,6 +21,8 @@ export type ToothSurface =
 
 export type DentalFindingStatus = 'ACTIVE' | 'RESOLVED' | 'CANCELLED';
 
+export type ToothAssessmentType = 'HEALTHY';
+
 export interface DentalFindingItem {
   id: string;
   toothNumber?: number;
@@ -54,16 +56,34 @@ export interface DentalFindingItem {
   } | null;
 }
 
+export interface ToothAssessmentItem {
+  id: string;
+  toothNumber: number;
+  assessmentType: ToothAssessmentType;
+  notes: string | null;
+  encounterId: string | null;
+  assessedAt: string;
+  createdAt: string;
+  assessedBy: {
+    id: string;
+    role: string;
+    name: string;
+  };
+}
+
 export interface OdontogramSummary {
   totalActiveFindings: number;
   teethWithActiveFindings: number;
   missingTeethCount: number;
+  healthyTeethCount: number;
 }
 
 export interface ToothSummaryEntry {
   toothNumber: number;
   toothName: string;
   activeFindings: DentalFindingItem[];
+  currentlyHealthy: boolean;
+  latestHealthyAssessedAt: string | null;
 }
 
 export interface OdontogramResponse {
@@ -76,10 +96,12 @@ export interface ToothDetailResponse {
   patientId: string;
   toothNumber: number;
   toothName: string;
+  currentlyHealthy: boolean;
   activeFindings: DentalFindingItem[];
   resolvedFindings: DentalFindingItem[];
   cancelledFindings: DentalFindingItem[];
   history: DentalFindingItem[];
+  assessments: ToothAssessmentItem[];
 }
 
 export interface CreateDentalFindingInput {
@@ -99,6 +121,56 @@ export interface ResolveDentalFindingInput {
 export interface CancelDentalFindingInput {
   expectedVersion: number;
   cancellationReason: string;
+}
+
+export interface BatchFindingItemInput {
+  toothNumber: number;
+  surfaces: ToothSurface[];
+}
+
+export interface BatchAssessmentItemInput {
+  toothNumber: number;
+}
+
+export interface BatchCreateFindingActionInput {
+  requestId: string;
+  action: 'CREATE_FINDING';
+  encounterId?: string | null;
+  findingType: DentalFindingType;
+  notes?: string | null;
+  items: BatchFindingItemInput[];
+}
+
+export interface BatchRecordAssessmentActionInput {
+  requestId: string;
+  action: 'RECORD_ASSESSMENT';
+  encounterId?: string | null;
+  assessmentType: 'HEALTHY';
+  notes?: string | null;
+  items: BatchAssessmentItemInput[];
+}
+
+export type BatchOdontogramActionInput =
+  | BatchCreateFindingActionInput
+  | BatchRecordAssessmentActionInput;
+
+export interface BatchOdontogramResponse {
+  patientId: string;
+  appliedCount: number;
+  action: 'CREATE_FINDING' | 'RECORD_ASSESSMENT';
+  findings: DentalFindingItem[];
+  assessments: ToothAssessmentItem[];
+}
+
+export interface BatchValidationFailure {
+  index: number;
+  toothNumber: number;
+  reasonCode: string;
+  reasonMessage: string;
+}
+
+export interface BatchErrorDetails {
+  failures?: BatchValidationFailure[];
 }
 
 export const FDI_TOOTH_NAMES: Record<number, string> = {

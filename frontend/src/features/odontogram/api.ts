@@ -5,7 +5,9 @@ import type {
   DentalFindingItem,
   CreateDentalFindingInput,
   ResolveDentalFindingInput,
-  CancelDentalFindingInput
+  CancelDentalFindingInput,
+  BatchOdontogramActionInput,
+  BatchOdontogramResponse
 } from './types';
 
 export const odontogramApi = {
@@ -19,6 +21,13 @@ export const odontogramApi = {
 
   createFinding: async (patientId: string, input: CreateDentalFindingInput): Promise<DentalFindingItem> => {
     return apiClient.post<DentalFindingItem>(`/patients/${patientId}/odontogram/findings`, input);
+  },
+
+  applyBatch: async (
+    patientId: string,
+    input: BatchOdontogramActionInput
+  ): Promise<BatchOdontogramResponse> => {
+    return apiClient.post<BatchOdontogramResponse>(`/patients/${patientId}/odontogram/batch`, input);
   },
 
   resolveFinding: async (

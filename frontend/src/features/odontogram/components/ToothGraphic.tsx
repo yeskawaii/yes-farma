@@ -1,11 +1,16 @@
 import React from 'react';
+import { Check, AlertTriangle } from 'lucide-react';
 import type { DentalFindingItem, ToothSurface } from '../types';
 import { FDI_TOOTH_NAMES } from '../types';
 
 interface ToothGraphicProps {
   toothNumber: number;
   activeFindings?: DentalFindingItem[];
+  currentlyHealthy?: boolean;
   isSelected?: boolean;
+  isFastCaptureActive?: boolean;
+  isConflicted?: boolean;
+  conflictMessage?: string;
   onClick?: () => void;
 }
 
@@ -20,7 +25,11 @@ const SURFACE_ORIENTED_TYPES = ['CARIES', 'RESTORATION', 'FRACTURE'] as const;
 export const ToothGraphic: React.FC<ToothGraphicProps> = ({
   toothNumber,
   activeFindings = [],
+  currentlyHealthy = false,
   isSelected = false,
+  isFastCaptureActive = false,
+  isConflicted = false,
+  conflictMessage,
   onClick
 }) => {
   const isUpper = toothNumber < 30; // 11-28 is Upper (Maxillary), 31-48 is Lower (Mandibular)
@@ -89,13 +98,38 @@ export const ToothGraphic: React.FC<ToothGraphicProps> = ({
   );
 
   const toothName = FDI_TOOTH_NAMES[toothNumber] || `Pieza ${toothNumber}`;
-  const accessibleLabel = `Pieza FDI ${toothNumber} - ${toothName}: ${
-    activeFindings.length === 0
-      ? 'Sin hallazgos activos'
-      : `${activeFindings.length} hallazgo${activeFindings.length > 1 ? 's' : ''} activo${
-          activeFindings.length > 1 ? 's' : ''
-        }`
-  }`;
+  const statusDescription = currentlyHealthy
+    ? 'Evaluada clínicamente como Sana'
+    : activeFindings.length === 0
+    ? 'Sin hallazgos activos'
+    : `${activeFindings.length} hallazgo${activeFindings.length > 1 ? 's' : ''} activo${
+        activeFindings.length > 1 ? 's' : ''
+      }`;
+
+  const accessibleLabel = `Pieza FDI ${toothNumber} - ${toothName}: ${statusDescription}${
+    isSelected ? ' (Seleccionada)' : ''
+  }${isConflicted ? ` - Advertencia: ${conflictMessage || 'Conflicto clínico'}` : ''}`;
+
+  // Styling based on mode and state
+  let containerStyleClasses = 'bg-white border border-slate-200 hover:border-slate-300 hover:shadow-xs';
+
+  if (isFastCaptureActive) {
+    if (isSelected && isConflicted) {
+      containerStyleClasses =
+        'bg-amber-50/80 border-2 border-amber-500 ring-2 ring-indigo-500 shadow-md scale-105 z-10';
+    } else if (isSelected) {
+      containerStyleClasses =
+        'bg-indigo-50/80 border-2 border-indigo-600 ring-2 ring-indigo-500/40 shadow-md scale-105 z-10';
+    } else if (isConflicted) {
+      containerStyleClasses =
+        'bg-amber-50/70 border-2 border-amber-500 ring-2 ring-amber-400/40 shadow-sm scale-102 z-10';
+    } else {
+      containerStyleClasses =
+        'bg-white border border-slate-200 hover:border-indigo-300 hover:bg-slate-50/70 hover:scale-[1.02]';
+    }
+  } else if (isSelected) {
+    containerStyleClasses = 'bg-blue-50 border-2 border-blue-500 shadow-md scale-105 z-10';
+  }
 
   return (
     <button
@@ -103,19 +137,36 @@ export const ToothGraphic: React.FC<ToothGraphicProps> = ({
       onClick={onClick}
       aria-label={accessibleLabel}
       aria-pressed={isSelected}
-      className={`relative flex flex-col items-center p-2 rounded-xl cursor-pointer transition-all duration-150 select-none text-left focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-        isSelected
-          ? 'bg-blue-50 border-2 border-blue-500 shadow-md scale-105 z-10'
-          : 'bg-white border border-slate-200 hover:border-blue-300 hover:shadow-xs hover:scale-[1.02]'
-      }`}
-      style={{ width: '56px', minHeight: '84px' }}
-      title={accessibleLabel}
+      className={`relative flex flex-col items-center p-2 rounded-xl cursor-pointer transition-all duration-150 select-none text-left focus:outline-none focus:ring-2 focus:ring-indigo-500 touch-manipulation ${containerStyleClasses}`}
+      style={{ minWidth: '54px', width: '56px', minHeight: '88px' }}
+      title={conflictMessage || accessibleLabel}
     >
+      {/* Conflict Warning Badge */}
+      {isConflicted && (
+        <div
+          className="absolute -top-1.5 -left-1.5 z-30 w-4 h-4 bg-amber-500 text-white rounded-full flex items-center justify-center shadow-xs border border-white"
+          title={conflictMessage || 'Conflicto en lote'}
+        >
+          <AlertTriangle size={10} strokeWidth={3} />
+        </div>
+      )}
+
+      {/* Fast Capture Selection Checkmark Badge */}
+      {isFastCaptureActive && isSelected && (
+        <div className="absolute -top-1.5 -right-1.5 z-20 w-4 h-4 bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-xs border border-white">
+          <Check size={10} strokeWidth={3} />
+        </div>
+      )}
+
       {/* Top Number for Upper Teeth */}
       {isUpper && (
         <span
           className={`text-xs font-bold mb-1 ${
-            isSelected ? 'text-blue-700' : 'text-slate-700'
+            isFastCaptureActive && isSelected
+              ? 'text-indigo-800 font-extrabold'
+              : isSelected
+              ? 'text-blue-700'
+              : 'text-slate-700'
           }`}
         >
           {toothNumber}
@@ -123,7 +174,7 @@ export const ToothGraphic: React.FC<ToothGraphicProps> = ({
       )}
 
       {/* SVG Tooth Diagram */}
-      <div className="relative w-9 h-9">
+      <div className="relative w-9 h-9 my-auto">
         <svg
           viewBox="0 0 100 100"
           className={`w-full h-full ${
@@ -263,8 +314,17 @@ export const ToothGraphic: React.FC<ToothGraphicProps> = ({
         )}
       </div>
 
-      {/* Badges indicators for multiple findings */}
+      {/* Badges indicators for multiple findings and Healthy Indicator */}
       <div className="flex flex-wrap gap-0.5 justify-center mt-1 max-w-full">
+        {currentlyHealthy && !isMissing && (
+          <span
+            className="px-1 py-0.2 text-[8px] font-extrabold bg-emerald-100 text-emerald-800 rounded flex items-center gap-0.5 shadow-3xs"
+            title="Evaluada como Sana (HEALTHY)"
+          >
+            <Check size={8} strokeWidth={3} />
+            SANA
+          </span>
+        )}
         {hasEndo && (
           <span className="px-1 py-0.2 text-[8px] font-bold bg-purple-100 text-purple-700 rounded">
             ENDO
@@ -286,7 +346,11 @@ export const ToothGraphic: React.FC<ToothGraphicProps> = ({
       {!isUpper && (
         <span
           className={`text-xs font-bold mt-1 ${
-            isSelected ? 'text-blue-700' : 'text-slate-700'
+            isFastCaptureActive && isSelected
+              ? 'text-indigo-800 font-extrabold'
+              : isSelected
+              ? 'text-blue-700'
+              : 'text-slate-700'
           }`}
         >
           {toothNumber}
