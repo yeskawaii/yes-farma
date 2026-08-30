@@ -72,6 +72,35 @@ enum PatientDocumentStatus {
   DELETED
 }
 
+enum DentalFindingType {
+  CARIES
+  RESTORATION
+  CROWN
+  ENDODONTIC_TREATMENT
+  IMPLANT
+  MISSING
+  FRACTURE
+  EXTRACTION_INDICATED
+  PROSTHESIS
+  OTHER
+}
+
+enum ToothSurface {
+  MESIAL
+  DISTAL
+  VESTIBULAR
+  LINGUAL_PALATAL
+  OCCLUSAL
+  INCISAL
+  WHOLE_TOOTH
+}
+
+enum DentalFindingStatus {
+  ACTIVE
+  RESOLVED
+  CANCELLED
+}
+
 model User {
   id           String     @id @default(uuid()) @db.Uuid
   email        String     @unique
@@ -106,6 +135,7 @@ model Clinic {
   appointments       Appointment[]
   clinicalEncounters ClinicalEncounter[]
   patientDocuments   PatientDocument[]
+  dentalFindings     DentalFinding[]
 }
 
 model Membership {
@@ -137,6 +167,10 @@ model Membership {
   createdClinicalEncounterAmendments ClinicalEncounterAmendment[] @relation("ClinicalEncounterAmendmentCreatedBy")
   uploadedPatientDocuments           PatientDocument[]            @relation("PatientDocumentUploadedBy")
   deletedPatientDocuments            PatientDocument[]            @relation("PatientDocumentDeletedBy")
+  createdDentalFindings              DentalFinding[]              @relation("DentalFindingCreatedBy")
+  updatedDentalFindings              DentalFinding[]              @relation("DentalFindingUpdatedBy")
+  resolvedDentalFindings             DentalFinding[]              @relation("DentalFindingResolvedBy")
+  cancelledDentalFindings            DentalFinding[]              @relation("DentalFindingCancelledBy")
 
   @@unique([clinicId, id])
   @@unique([userId, clinicId])
@@ -243,6 +277,7 @@ model Patient {
   appointments       Appointment[]
   clinicalEncounters ClinicalEncounter[]
   documents          PatientDocument[]
+  dentalFindings     DentalFinding[]
 
   @@unique([clinicId, id])
   @@index([clinicId, status])
@@ -320,8 +355,10 @@ model ClinicalEncounter {
   vitalSigns   ClinicalVitalSigns?
   diagnoses    ClinicalDiagnosis[]
   procedures   ClinicalProcedure[]
-  amendments   ClinicalEncounterAmendment[]
-  documents    PatientDocument[]
+  amendments               ClinicalEncounterAmendment[]
+  documents                PatientDocument[]
+  detectedDentalFindings   DentalFinding[]              @relation("FindingDetectedInEncounter")
+  resolvedDentalFindings   DentalFinding[]              @relation("FindingResolvedInEncounter")
 
   @@unique([clinicId, id])
   @@index([clinicId, patientId, occurredAt])
@@ -428,4 +465,44 @@ model ClinicalEncounterAmendment {
   createdBy Membership        @relation("ClinicalEncounterAmendmentCreatedBy", fields: [createdByMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   @@index([clinicId, encounterId, createdAt])
+}
+
+model DentalFinding {
+  id                      String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clinicId                String              @db.Uuid
+  patientId               String              @db.Uuid
+  toothNumber             Int
+  findingType             DentalFindingType
+  surfaces                ToothSurface[]
+  status                  DentalFindingStatus @default(ACTIVE)
+  version                 Int                 @default(1)
+  notes                   String?             @db.Text
+  encounterId             String?             @db.Uuid
+  resolutionEncounterId   String?             @db.Uuid
+  resolutionNotes         String?             @db.Text
+  resolvedAt              DateTime?           @db.Timestamptz(3)
+  resolvedByMembershipId  String?             @db.Uuid
+  cancellationReason      String?             @db.VarChar(500)
+  cancelledAt             DateTime?           @db.Timestamptz(3)
+  cancelledByMembershipId String?             @db.Uuid
+  createdAt               DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt               DateTime            @updatedAt @db.Timestamptz(3)
+  createdByMembershipId   String              @db.Uuid
+  updatedByMembershipId   String              @db.Uuid
+
+  clinic              Clinic             @relation(fields: [clinicId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  patient             Patient            @relation(fields: [clinicId, patientId], references: [clinicId, id], onDelete: Restrict, onUpdate: Cascade)
+  encounter           ClinicalEncounter? @relation("FindingDetectedInEncounter", fields: [clinicId, encounterId], references: [clinicId, id], onDelete: Restrict, onUpdate: Cascade)
+  resolutionEncounter ClinicalEncounter? @relation("FindingResolvedInEncounter", fields: [clinicId, resolutionEncounterId], references: [clinicId, id], onDelete: Restrict, onUpdate: Cascade)
+  createdBy           Membership         @relation("DentalFindingCreatedBy", fields: [clinicId, createdByMembershipId], references: [clinicId, id], onDelete: Restrict, onUpdate: Cascade)
+  updatedBy           Membership         @relation("DentalFindingUpdatedBy", fields: [clinicId, updatedByMembershipId], references: [clinicId, id], onDelete: Restrict, onUpdate: Cascade)
+  resolvedBy          Membership?        @relation("DentalFindingResolvedBy", fields: [clinicId, resolvedByMembershipId], references: [clinicId, id], onDelete: Restrict, onUpdate: Cascade)
+  cancelledBy         Membership?        @relation("DentalFindingCancelledBy", fields: [clinicId, cancelledByMembershipId], references: [clinicId, id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([clinicId, id])
+  @@index([clinicId, patientId, status])
+  @@index([clinicId, patientId, toothNumber])
+  @@index([clinicId, encounterId])
+  @@index([clinicId, resolutionEncounterId])
+  @@index([clinicId, updatedAt])
 }

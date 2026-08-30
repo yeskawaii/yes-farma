@@ -1,12 +1,30 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, UserCircle2, Mail, Phone, Calendar, AlertCircle, RefreshCw, Clock, Edit2, Ban, AlertTriangle, X, CheckCircle } from 'lucide-react';
+import {
+  ArrowLeft,
+  UserCircle2,
+  Mail,
+  Phone,
+  Calendar,
+  AlertCircle,
+  RefreshCw,
+  Clock,
+  Edit2,
+  Ban,
+  AlertTriangle,
+  X,
+  CheckCircle,
+  Activity,
+  FileText,
+  Files
+} from 'lucide-react';
 import { patientsApi } from './api';
 import { ApiClientError } from '../../core/api/client';
 import type { PatientDetail as PatientDetailType } from './types';
 import { useAuth } from '../../core/auth/AuthProvider';
 import { EncounterList } from '../clinical-encounters/EncounterList';
 import { PatientDocumentList } from '../patient-documents/components/PatientDocumentList';
+import { OdontogramView } from '../odontogram/components/OdontogramView';
 import { Modal } from '../../shared/components/Modal/Modal';
 
 export function PatientDetail() {
@@ -17,6 +35,7 @@ export function PatientDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [currentTab, setCurrentTab] = useState<'OVERVIEW' | 'ODONTOGRAM' | 'ENCOUNTERS' | 'DOCUMENTS'>('OVERVIEW');
 
   const { activeRole } = useAuth();
   const [showDeactivateDialog, setShowDeactivateDialog] = useState(false);
@@ -25,6 +44,7 @@ export function PatientDetail() {
 
   const canDeactivate = data?.status === 'ACTIVE' && (activeRole === 'OWNER' || activeRole === 'PROFESSIONAL');
   const canReactivate = data?.status === 'INACTIVE' && (activeRole === 'OWNER' || activeRole === 'PROFESSIONAL');
+  const canViewOdontogram = activeRole === 'OWNER' || activeRole === 'PROFESSIONAL';
 
   const [showReactivateDialog, setShowReactivateDialog] = useState(false);
   const [reactivating, setReactivating] = useState(false);
@@ -229,139 +249,250 @@ export function PatientDetail() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Info Column */}
-        <div className="md:col-span-2 flex flex-col gap-6">
-          {/* General Data */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-            <h2 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
-              <UserCircle2 className="text-blue-500" size={20} />
-              Datos Personales
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-8">
-              <div>
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Fecha de nacimiento</p>
-                <p className="text-slate-900 font-medium">
-                  {data.birthDate ? formatDate(data.birthDate) : 'No registrada'}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Edad</p>
-                <p className="text-slate-900 font-medium">{data.birthDate ? `${calculateAge(data.birthDate)} años` : 'N/A'}</p>
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Sexo asignado al nacer</p>
-                <p className="text-slate-900 font-medium">{data.sexAtBirth ? sexDisplay[data.sexAtBirth] : 'No especificado'}</p>
-              </div>
-            </div>
-          </div>
+      {/* Section Tabs */}
+      <div
+        role="tablist"
+        aria-label="Secciones del paciente"
+        className="flex border-b border-slate-200 bg-white px-4 rounded-2xl shadow-xs gap-2 overflow-x-auto"
+      >
+        <button
+          role="tab"
+          aria-selected={currentTab === 'OVERVIEW'}
+          aria-controls="tab-panel-overview"
+          id="tab-overview"
+          onClick={() => setCurrentTab('OVERVIEW')}
+          className={`py-3.5 px-4 text-sm font-bold border-b-2 flex items-center gap-2 shrink-0 whitespace-nowrap transition-all ${
+            currentTab === 'OVERVIEW'
+              ? 'border-blue-600 text-blue-600'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <UserCircle2 size={18} />
+          Resumen General
+        </button>
 
-          {/* Contact Data */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-            <h2 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
-              <Phone className="text-teal-500" size={20} />
-              Contacto
-            </h2>
-            <div className="flex flex-col gap-4">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 shrink-0">
-                  <Phone size={18} />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Teléfono</p>
-                  <p className="text-slate-900 font-medium">{data.phone || 'No registrado'}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 shrink-0">
-                  <Mail size={18} />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Correo electrónico</p>
-                  <p className="text-slate-900 font-medium">{data.email || 'No registrado'}</p>
-                </div>
-              </div>
-            </div>
-          </div>
+        {canViewOdontogram && (
+          <button
+            role="tab"
+            aria-selected={currentTab === 'ODONTOGRAM'}
+            aria-controls="tab-panel-odontogram"
+            id="tab-odontogram"
+            onClick={() => setCurrentTab('ODONTOGRAM')}
+            className={`py-3.5 px-4 text-sm font-bold border-b-2 flex items-center gap-2 shrink-0 whitespace-nowrap transition-all ${
+              currentTab === 'ODONTOGRAM'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Activity size={18} />
+            Odontograma (FDI)
+          </button>
+        )}
 
-          {/* Administrative Notes */}
-          {data.administrativeNotes && (
-            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 shadow-sm">
-              <h2 className="text-lg font-bold text-amber-900 mb-2">Notas Administrativas</h2>
-              <p className="text-amber-800 text-sm leading-relaxed whitespace-pre-wrap">{data.administrativeNotes}</p>
-            </div>
-          )}
+        <button
+          role="tab"
+          aria-selected={currentTab === 'ENCOUNTERS'}
+          aria-controls="tab-panel-encounters"
+          id="tab-encounters"
+          onClick={() => setCurrentTab('ENCOUNTERS')}
+          className={`py-3.5 px-4 text-sm font-bold border-b-2 flex items-center gap-2 shrink-0 whitespace-nowrap transition-all ${
+            currentTab === 'ENCOUNTERS'
+              ? 'border-blue-600 text-blue-600'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <FileText size={18} />
+          Consultas Clínicas
+        </button>
 
-          {/* Clinical Encounters */}
-          {id && <EncounterList patientId={id} />}
-
-          {/* Patient Documents */}
-          {id && <PatientDocumentList patientId={id} />}
-        </div>
-
-        {/* Sidebar Column */}
-        <div className="flex flex-col gap-6">
-          {/* Meta Info */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-            <h2 className="text-sm font-bold text-slate-900 mb-4 flex items-center gap-2">
-              <Clock className="text-slate-400" size={16} />
-              Registro en sistema
-            </h2>
-            <div className="flex flex-col gap-4">
-              <div>
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Fecha de creación</p>
-                <div className="flex items-center gap-2 text-sm text-slate-700 font-medium">
-                  <Calendar size={14} className="text-slate-400" />
-                  {formatDate(data.createdAt)}
-                </div>
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Última actualización</p>
-                <div className="flex items-center gap-2 text-sm text-slate-700 font-medium">
-                  <Calendar size={14} className="text-slate-400" />
-                  {formatDate(data.updatedAt)}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {canDeactivate && (
-            <div className="bg-white border border-red-200 rounded-2xl p-6 shadow-sm flex flex-col gap-4">
-              <div>
-                <h2 className="text-sm font-bold text-red-700 flex items-center gap-2">
-                  <Ban size={16} />
-                  Zona de Peligro
-                </h2>
-                <p className="text-xs text-slate-500 mt-1">Desactiva este paciente para que no aparezca en las búsquedas principales. No se eliminará físicamente.</p>
-              </div>
-              <button
-                onClick={() => setShowDeactivateDialog(true)}
-                className="w-full inline-flex justify-center items-center gap-2 px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 transition-colors font-medium text-sm"
-              >
-                Desactivar Paciente
-              </button>
-            </div>
-          )}
-
-          {canReactivate && (
-            <div className="bg-white border border-emerald-200 rounded-2xl p-6 shadow-sm flex flex-col gap-4">
-              <div>
-                <h2 className="text-sm font-bold text-emerald-700 flex items-center gap-2">
-                  <CheckCircle size={16} />
-                  Reactivar
-                </h2>
-                <p className="text-xs text-slate-500 mt-1">Vuelve a habilitar este paciente para que aparezca en el listado activo.</p>
-              </div>
-              <button
-                onClick={() => setShowReactivateDialog(true)}
-                className="w-full inline-flex justify-center items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors font-medium text-sm"
-              >
-                Reactivar Paciente
-              </button>
-            </div>
-          )}
-        </div>
+        <button
+          role="tab"
+          aria-selected={currentTab === 'DOCUMENTS'}
+          aria-controls="tab-panel-documents"
+          id="tab-documents"
+          onClick={() => setCurrentTab('DOCUMENTS')}
+          className={`py-3.5 px-4 text-sm font-bold border-b-2 flex items-center gap-2 shrink-0 whitespace-nowrap transition-all ${
+            currentTab === 'DOCUMENTS'
+              ? 'border-blue-600 text-blue-600'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Files size={18} />
+          Documentos y Rayos X
+        </button>
       </div>
+
+      {/* TAB PANEL: OVERVIEW */}
+      {currentTab === 'OVERVIEW' && (
+        <div
+          id="tab-panel-overview"
+          role="tabpanel"
+          aria-labelledby="tab-overview"
+          className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-in fade-in duration-150"
+        >
+          {/* Info Column */}
+          <div className="md:col-span-2 flex flex-col gap-6">
+            {/* General Data */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+              <h2 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+                <UserCircle2 className="text-blue-500" size={20} />
+                Datos Personales
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-8">
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Fecha de nacimiento</p>
+                  <p className="text-slate-900 font-medium">
+                    {data.birthDate ? formatDate(data.birthDate) : 'No registrada'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Edad</p>
+                  <p className="text-slate-900 font-medium">{data.birthDate ? `${calculateAge(data.birthDate)} años` : 'N/A'}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Sexo asignado al nacer</p>
+                  <p className="text-slate-900 font-medium">{data.sexAtBirth ? sexDisplay[data.sexAtBirth] : 'No especificado'}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Contact Data */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+              <h2 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+                <Phone className="text-teal-500" size={20} />
+                Contacto
+              </h2>
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 shrink-0">
+                    <Phone size={18} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Teléfono</p>
+                    <p className="text-slate-900 font-medium">{data.phone || 'No registrado'}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 shrink-0">
+                    <Mail size={18} />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-0.5">Correo electrónico</p>
+                    <p className="text-slate-900 font-medium">{data.email || 'No registrado'}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Administrative Notes */}
+            {data.administrativeNotes && (
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 shadow-sm">
+                <h2 className="text-lg font-bold text-amber-900 mb-2">Notas Administrativas</h2>
+                <p className="text-amber-800 text-sm leading-relaxed whitespace-pre-wrap">{data.administrativeNotes}</p>
+              </div>
+            )}
+          </div>
+
+          {/* Sidebar Column */}
+          <div className="flex flex-col gap-6">
+            {/* Meta Info */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+              <h2 className="text-sm font-bold text-slate-900 mb-4 flex items-center gap-2">
+                <Clock className="text-slate-400" size={16} />
+                Registro en sistema
+              </h2>
+              <div className="flex flex-col gap-4">
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Fecha de creación</p>
+                  <div className="flex items-center gap-2 text-sm text-slate-700 font-medium">
+                    <Calendar size={14} className="text-slate-400" />
+                    {formatDate(data.createdAt)}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Última actualización</p>
+                  <div className="flex items-center gap-2 text-sm text-slate-700 font-medium">
+                    <Calendar size={14} className="text-slate-400" />
+                    {formatDate(data.updatedAt)}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {canDeactivate && (
+              <div className="bg-white border border-red-200 rounded-2xl p-6 shadow-sm flex flex-col gap-4">
+                <div>
+                  <h2 className="text-sm font-bold text-red-700 flex items-center gap-2">
+                    <Ban size={16} />
+                    Zona de Peligro
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-1">Desactiva este paciente para que no aparezca en las búsquedas principales. No se eliminará físicamente.</p>
+                </div>
+                <button
+                  onClick={() => setShowDeactivateDialog(true)}
+                  className="w-full inline-flex justify-center items-center gap-2 px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 transition-colors font-medium text-sm"
+                >
+                  Desactivar Paciente
+                </button>
+              </div>
+            )}
+
+            {canReactivate && (
+              <div className="bg-white border border-emerald-200 rounded-2xl p-6 shadow-sm flex flex-col gap-4">
+                <div>
+                  <h2 className="text-sm font-bold text-emerald-700 flex items-center gap-2">
+                    <CheckCircle size={16} />
+                    Reactivar
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-1">Vuelve a habilitar este paciente para que aparezca en el listado activo.</p>
+                </div>
+                <button
+                  onClick={() => setShowReactivateDialog(true)}
+                  className="w-full inline-flex justify-center items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors font-medium text-sm"
+                >
+                  Reactivar Paciente
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB PANEL: ODONTOGRAM */}
+      {currentTab === 'ODONTOGRAM' && canViewOdontogram && id && (
+        <div
+          id="tab-panel-odontogram"
+          role="tabpanel"
+          aria-labelledby="tab-odontogram"
+          className="animate-in fade-in duration-150"
+        >
+          <OdontogramView patientId={id} />
+        </div>
+      )}
+
+      {/* TAB PANEL: CLINICAL ENCOUNTERS */}
+      {currentTab === 'ENCOUNTERS' && id && (
+        <div
+          id="tab-panel-encounters"
+          role="tabpanel"
+          aria-labelledby="tab-encounters"
+          className="animate-in fade-in duration-150"
+        >
+          <EncounterList patientId={id} />
+        </div>
+      )}
+
+      {/* TAB PANEL: DOCUMENTS */}
+      {currentTab === 'DOCUMENTS' && id && (
+        <div
+          id="tab-panel-documents"
+          role="tabpanel"
+          aria-labelledby="tab-documents"
+          className="animate-in fade-in duration-150"
+        >
+          <PatientDocumentList patientId={id} />
+        </div>
+      )}
 
       {showDeactivateDialog && (
         <Modal
