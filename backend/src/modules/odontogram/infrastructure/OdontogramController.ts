@@ -3,7 +3,8 @@ import { OdontogramService, IOdontogramRepository } from '../application/Odontog
 import {
   createDentalFindingSchema,
   resolveDentalFindingSchema,
-  cancelDentalFindingSchema
+  cancelDentalFindingSchema,
+  batchOdontogramActionSchema
 } from '../domain/OdontogramSchema';
 import { AuthContext } from '../../../middlewares/auth';
 import { z } from 'zod';
@@ -68,6 +69,28 @@ export class OdontogramController {
       const input = createDentalFindingSchema.parse(req.body);
 
       const result = await odontogramService.createFinding(
+        ctx.clinicId,
+        patientId,
+        ctx.membershipId,
+        input
+      );
+
+      res.status(201).json(result);
+    } catch (error: unknown) {
+      if (error instanceof z.ZodError) {
+        return next(new AppError('VALIDATION_ERROR', error.errors[0]?.message || 'Datos inválidos', 400));
+      }
+      next(error);
+    }
+  }
+
+  static async applyBatch(req: Request, res: Response, next: NextFunction) {
+    try {
+      const ctx = getAuthCtx(req);
+      const patientId = z.string().uuid().parse(req.params.patientId);
+      const input = batchOdontogramActionSchema.parse(req.body);
+
+      const result = await odontogramService.applyBatch(
         ctx.clinicId,
         patientId,
         ctx.membershipId,

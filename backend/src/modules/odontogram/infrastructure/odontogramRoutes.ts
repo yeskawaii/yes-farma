@@ -11,6 +11,7 @@ router.use(validateOrigin);
 router.get('/:patientId/odontogram', OdontogramController.getOdontogram);
 router.get('/:patientId/odontogram/teeth/:toothNumber', OdontogramController.getToothDetail);
 router.post('/:patientId/odontogram/findings', OdontogramController.createFinding);
+router.post('/:patientId/odontogram/batch', OdontogramController.applyBatch);
 router.post('/:patientId/odontogram/findings/:findingId/resolve', OdontogramController.resolveFinding);
 router.post('/:patientId/odontogram/findings/:findingId/cancel', OdontogramController.cancelFinding);
 

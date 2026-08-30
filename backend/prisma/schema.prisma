@@ -101,6 +101,10 @@ enum DentalFindingStatus {
   CANCELLED
 }
 
+enum ToothAssessmentType {
+  HEALTHY
+}
+
 model User {
   id           String     @id @default(uuid()) @db.Uuid
   email        String     @unique
@@ -134,8 +138,10 @@ model Clinic {
   patients           Patient[]
   appointments       Appointment[]
   clinicalEncounters ClinicalEncounter[]
-  patientDocuments   PatientDocument[]
-  dentalFindings     DentalFinding[]
+  patientDocuments       PatientDocument[]
+  dentalFindings         DentalFinding[]
+  toothAssessments       ToothAssessment[]
+  odontogramBatchRequests OdontogramBatchRequest[]
 }
 
 model Membership {
@@ -171,6 +177,8 @@ model Membership {
   updatedDentalFindings              DentalFinding[]              @relation("DentalFindingUpdatedBy")
   resolvedDentalFindings             DentalFinding[]              @relation("DentalFindingResolvedBy")
   cancelledDentalFindings            DentalFinding[]              @relation("DentalFindingCancelledBy")
+  assessedToothAssessments           ToothAssessment[]
+  createdOdontogramBatchRequests     OdontogramBatchRequest[]     @relation("OdontogramBatchRequestCreatedBy")
 
   @@unique([clinicId, id])
   @@unique([userId, clinicId])
@@ -276,8 +284,10 @@ model Patient {
 
   appointments       Appointment[]
   clinicalEncounters ClinicalEncounter[]
-  documents          PatientDocument[]
-  dentalFindings     DentalFinding[]
+  documents               PatientDocument[]
+  dentalFindings          DentalFinding[]
+  toothAssessments        ToothAssessment[]
+  odontogramBatchRequests OdontogramBatchRequest[]
 
   @@unique([clinicId, id])
   @@index([clinicId, status])
@@ -345,20 +355,21 @@ model ClinicalEncounter {
   finalizedAt              DateTime?               @db.Timestamptz(3)
   finalizedByMembershipId  String?                 @db.Uuid
 
-  clinic       Clinic                       @relation(fields: [clinicId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  patient      Patient                      @relation(fields: [patientId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  professional Membership                   @relation("ClinicalEncounterProfessional", fields: [professionalMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  createdBy    Membership                   @relation("ClinicalEncounterCreatedBy", fields: [createdByMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  updatedBy    Membership                   @relation("ClinicalEncounterUpdatedBy", fields: [updatedByMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  finalizedBy  Membership?                  @relation("ClinicalEncounterFinalizedBy", fields: [finalizedByMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  appointment  Appointment?                 @relation(fields: [appointmentId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  vitalSigns   ClinicalVitalSigns?
-  diagnoses    ClinicalDiagnosis[]
-  procedures   ClinicalProcedure[]
-  amendments               ClinicalEncounterAmendment[]
-  documents                PatientDocument[]
-  detectedDentalFindings   DentalFinding[]              @relation("FindingDetectedInEncounter")
-  resolvedDentalFindings   DentalFinding[]              @relation("FindingResolvedInEncounter")
+  clinic                 Clinic                       @relation(fields: [clinicId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  patient                Patient                      @relation(fields: [patientId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  professional           Membership                   @relation("ClinicalEncounterProfessional", fields: [professionalMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  createdBy              Membership                   @relation("ClinicalEncounterCreatedBy", fields: [createdByMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  updatedBy              Membership                   @relation("ClinicalEncounterUpdatedBy", fields: [updatedByMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  finalizedBy            Membership?                  @relation("ClinicalEncounterFinalizedBy", fields: [finalizedByMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  appointment            Appointment?                 @relation(fields: [appointmentId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  vitalSigns             ClinicalVitalSigns?
+  diagnoses              ClinicalDiagnosis[]
+  procedures             ClinicalProcedure[]
+  amendments             ClinicalEncounterAmendment[]
+  documents              PatientDocument[]
+  detectedDentalFindings DentalFinding[]              @relation("FindingDetectedInEncounter")
+  resolvedDentalFindings DentalFinding[]              @relation("FindingResolvedInEncounter")
+  toothAssessments       ToothAssessment[]
 
   @@unique([clinicId, id])
   @@index([clinicId, patientId, occurredAt])
@@ -485,6 +496,7 @@ model DentalFinding {
   cancellationReason      String?             @db.VarChar(500)
   cancelledAt             DateTime?           @db.Timestamptz(3)
   cancelledByMembershipId String?             @db.Uuid
+  sourceRequestId         String?             @db.Uuid
   createdAt               DateTime            @default(now()) @db.Timestamptz(3)
   updatedAt               DateTime            @updatedAt @db.Timestamptz(3)
   createdByMembershipId   String              @db.Uuid
@@ -504,5 +516,51 @@ model DentalFinding {
   @@index([clinicId, patientId, toothNumber])
   @@index([clinicId, encounterId])
   @@index([clinicId, resolutionEncounterId])
+  @@index([clinicId, sourceRequestId])
   @@index([clinicId, updatedAt])
+}
+
+model ToothAssessment {
+  id                     String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clinicId               String              @db.Uuid
+  patientId              String              @db.Uuid
+  toothNumber            Int
+  assessmentType         ToothAssessmentType @default(HEALTHY)
+  notes                  String?             @db.Text
+  encounterId            String?             @db.Uuid
+  sourceRequestId        String              @db.Uuid
+  assessedAt             DateTime            @default(now()) @db.Timestamptz(3)
+  createdAt              DateTime            @default(now()) @db.Timestamptz(3)
+  assessedByMembershipId String              @db.Uuid
+
+  clinic     Clinic             @relation(fields: [clinicId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  patient    Patient            @relation(fields: [clinicId, patientId], references: [clinicId, id], onDelete: Restrict, onUpdate: Cascade)
+  encounter  ClinicalEncounter? @relation(fields: [clinicId, encounterId], references: [clinicId, id], onDelete: Restrict, onUpdate: Cascade)
+  assessedBy Membership         @relation(fields: [clinicId, assessedByMembershipId], references: [clinicId, id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([clinicId, id])
+  @@index([clinicId, patientId, toothNumber])
+  @@index([clinicId, patientId, assessedAt])
+  @@index([clinicId, encounterId])
+  @@index([clinicId, sourceRequestId])
+}
+
+model OdontogramBatchRequest {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  clinicId              String   @db.Uuid
+  patientId             String   @db.Uuid
+  requestId             String   @db.Uuid
+  requestFingerprint    String   @db.VarChar(64)
+  action                String   @db.VarChar(32)
+  createdByMembershipId String   @db.Uuid
+  createdAt             DateTime @default(now()) @db.Timestamptz(3)
+
+  clinic    Clinic     @relation(fields: [clinicId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  patient   Patient    @relation(fields: [clinicId, patientId], references: [clinicId, id], onDelete: Restrict, onUpdate: Cascade)
+  createdBy Membership @relation("OdontogramBatchRequestCreatedBy", fields: [clinicId, createdByMembershipId], references: [clinicId, id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([clinicId, patientId, requestId])
+  @@index([clinicId, patientId])
+  @@index([clinicId, requestId])
+  @@index([clinicId, createdByMembershipId])
 }
