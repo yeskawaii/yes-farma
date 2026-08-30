@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   CheckCircle2,
   Sparkles,
@@ -7,7 +8,8 @@ import {
   RotateCcw,
   AlertCircle,
   Loader2,
-  MoreHorizontal
+  MoreHorizontal,
+  Check
 } from 'lucide-react';
 import type { DentalFindingType, ToothSurface, BatchValidationFailure } from '../types';
 
@@ -28,6 +30,7 @@ interface FastCaptureDockProps {
   failures: BatchValidationFailure[];
   onRemoveConflictedTeeth: (toothNumbers: number[]) => void;
   resetTrigger?: number;
+  onHeightChange?: (height: number) => void;
 }
 
 const PRIMARY_ACTIONS: Array<{
@@ -108,17 +111,56 @@ export const FastCaptureDock: React.FC<FastCaptureDockProps> = ({
   submitting,
   failures,
   onRemoveConflictedTeeth,
-  resetTrigger = 0
+  resetTrigger = 0,
+  onHeightChange
 }) => {
   const [selectedAction, setSelectedAction] = useState<'HEALTHY' | DentalFindingType | null>(null);
-  const [hasOI, setHasOI] = useState(true);
+  const [hasOI, setHasOI] = useState(false);
   const [activeSurfaces, setActiveSurfaces] = useState<ToothSurface[]>([]);
   const [isWholeTooth, setIsWholeTooth] = useState(false);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [notes, setNotes] = useState('');
   const [showNotes, setShowNotes] = useState(false);
 
-  // Reset internal states on resetTrigger or when selection is empty
+  const dockRef = useRef<HTMLDivElement>(null);
+  const moreButtonRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  const [popoverCoords, setPopoverCoords] = useState<{
+    top?: number;
+    bottom?: number;
+    left: number;
+    maxHeight: number;
+  } | null>(null);
+
+  const selectedCount = selectedTeeth.size;
+  const isActionSurfaceOriented =
+    selectedAction === 'CARIES' ||
+    selectedAction === 'RESTORATION' ||
+    selectedAction === 'FRACTURE' ||
+    selectedAction === 'OTHER';
+
+  // Measure dock height using ResizeObserver
+  useEffect(() => {
+    if (!dockRef.current) return;
+    const el = dockRef.current;
+
+    const reportHeight = () => {
+      onHeightChange?.(el.offsetHeight);
+    };
+
+    reportHeight();
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => {
+        reportHeight();
+      });
+      ro.observe(el);
+      return () => ro.disconnect();
+    }
+  }, [onHeightChange, isActionSurfaceOriented, showNotes, failures.length]);
+
+  // Reset internal states on resetTrigger
   useEffect(() => {
     setSelectedAction(null);
     setHasOI(false);
@@ -129,12 +171,76 @@ export const FastCaptureDock: React.FC<FastCaptureDockProps> = ({
     setShowNotes(false);
   }, [resetTrigger]);
 
-  const selectedCount = selectedTeeth.size;
-  const isActionSurfaceOriented =
-    selectedAction === 'CARIES' ||
-    selectedAction === 'RESTORATION' ||
-    selectedAction === 'FRACTURE' ||
-    selectedAction === 'OTHER';
+  const updatePopoverPosition = useCallback(() => {
+    if (!moreButtonRef.current) return;
+    const rect = moreButtonRef.current.getBoundingClientRect();
+    const popoverWidth = 220;
+    const gap = 8;
+
+    // Horizontal placement: right-aligned with button, bounded by viewport margins
+    let left = rect.right - popoverWidth;
+    const minLeft = 12;
+    const maxLeft = window.innerWidth - popoverWidth - 12;
+    left = Math.max(minLeft, Math.min(left, maxLeft));
+
+    const spaceAbove = rect.top;
+    const spaceBelow = window.innerHeight - rect.bottom;
+
+    if (spaceAbove >= 180 || spaceAbove > spaceBelow) {
+      setPopoverCoords({
+        bottom: window.innerHeight - rect.top + gap,
+        left,
+        maxHeight: Math.min(spaceAbove - gap - 12, 320)
+      });
+    } else {
+      setPopoverCoords({
+        top: rect.bottom + gap,
+        left,
+        maxHeight: Math.min(spaceBelow - gap - 12, 320)
+      });
+    }
+  }, []);
+
+  // Handle outside click, escape, and window repositioning when More popover is open
+  useEffect(() => {
+    if (!isMoreOpen) return;
+
+    updatePopoverPosition();
+
+    const handleMouseDown = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (
+        popoverRef.current &&
+        !popoverRef.current.contains(target) &&
+        moreButtonRef.current &&
+        !moreButtonRef.current.contains(target)
+      ) {
+        setIsMoreOpen(false);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsMoreOpen(false);
+      }
+    };
+
+    const handleReposition = () => {
+      updatePopoverPosition();
+    };
+
+    window.addEventListener('mousedown', handleMouseDown);
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('resize', handleReposition, { passive: true });
+    window.addEventListener('scroll', handleReposition, { passive: true, capture: true });
+
+    return () => {
+      window.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('resize', handleReposition);
+      window.removeEventListener('scroll', handleReposition, { capture: true });
+    };
+  }, [isMoreOpen, updatePopoverPosition]);
 
   const handleSelectAction = (action: 'HEALTHY' | DentalFindingType) => {
     setSelectedAction(action);
@@ -150,6 +256,15 @@ export const FastCaptureDock: React.FC<FastCaptureDockProps> = ({
       setHasOI(true);
       setActiveSurfaces([]);
       setIsWholeTooth(false);
+    }
+  };
+
+  const handleToggleMore = () => {
+    if (isMoreOpen) {
+      setIsMoreOpen(false);
+    } else {
+      updatePopoverPosition();
+      setIsMoreOpen(true);
     }
   };
 
@@ -228,12 +343,6 @@ export const FastCaptureDock: React.FC<FastCaptureDockProps> = ({
     }
   }
 
-  const sortedSelectedTeeth = Array.from(selectedTeeth).sort((a, b) => a - b);
-  const teethListString =
-    sortedSelectedTeeth.length <= 6
-      ? sortedSelectedTeeth.join(', ')
-      : `${sortedSelectedTeeth.slice(0, 5).join(', ')}... (+${sortedSelectedTeeth.length - 5})`;
-
   const hasSurfaceSelection =
     selectedAction === null ||
     !isActionSurfaceOriented ||
@@ -244,296 +353,327 @@ export const FastCaptureDock: React.FC<FastCaptureDockProps> = ({
   const isSubmitDisabled =
     selectedCount === 0 ||
     selectedAction === null ||
-    submitting ||
-    !hasSurfaceSelection;
+    !hasSurfaceSelection ||
+    submitting;
+
+  const isMoreActionSelected = MORE_ACTIONS.some((a) => a.type === selectedAction);
 
   return (
-    <div className="fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-t-2 border-indigo-200 shadow-2xl p-3 sm:p-4 pb-[max(1rem,env(safe-area-inset-bottom))] max-h-[85vh] overflow-y-auto transition-all duration-200 animate-in slide-in-from-bottom-6">
-      <div className="max-w-5xl mx-auto flex flex-col gap-3">
-        {/* Failures Alert Banner if any conflicts exist */}
-        {failures.length > 0 && (
-          <div className="p-3 bg-amber-50 border border-amber-300 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-amber-900 animate-in fade-in">
-            <div className="flex items-start gap-2">
-              <AlertCircle size={16} className="text-amber-600 shrink-0 mt-0.5" />
-              <div>
-                <span className="font-bold">Conflicto en {failures.length} pieza{failures.length > 1 ? 's' : ''}:</span>{' '}
-                {failures.map((f) => `P.${f.toothNumber} (${f.reasonMessage})`).join(' · ')}
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => onRemoveConflictedTeeth(failures.map((f) => f.toothNumber))}
-              className="px-3 py-1 bg-amber-200/80 hover:bg-amber-300 text-amber-950 font-bold rounded-lg transition-colors shrink-0 text-center cursor-pointer"
-            >
-              Desmarcar piezas en conflicto
-            </button>
-          </div>
-        )}
-
-        {/* Top Control Bar: Selection count, summary, clear, exit */}
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-100 text-indigo-900 rounded-full font-bold text-xs">
-              <Sparkles size={13} className="text-indigo-600" />
-              {selectedCount} pieza{selectedCount !== 1 ? 's' : ''} seleccionada{selectedCount !== 1 ? 's' : ''}
-            </span>
-
-            {selectedCount > 0 && (
-              <span className="text-xs text-slate-500 font-medium hidden sm:inline">
-                [{teethListString}]
+    <>
+      <div
+        ref={dockRef}
+        className="fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-t-2 border-indigo-200 shadow-2xl p-3 sm:p-4 pb-[max(1rem,env(safe-area-inset-bottom))] max-h-[85vh] overflow-y-auto transition-all duration-200 animate-in slide-in-from-bottom-6"
+      >
+        <div className="max-w-5xl mx-auto flex flex-col gap-3">
+          {/* Header row: Selection counter & Quick Actions */}
+          <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-indigo-600 text-white font-black text-xs">
+                {selectedCount}
               </span>
-            )}
-          </div>
+              <span className="text-xs font-bold text-slate-800">
+                {selectedCount === 1 ? '1 pieza seleccionada' : `${selectedCount} piezas seleccionadas`}
+              </span>
+              {selectedCount === 0 && (
+                <span className="text-[11px] text-slate-400 font-medium hidden sm:inline">
+                  — Toca los dientes arriba para seleccionar
+                </span>
+              )}
+            </div>
 
-          <div className="flex items-center gap-2">
-            {selectedCount > 0 && (
+            <div className="flex items-center gap-2">
+              {selectedCount > 0 && (
+                <button
+                  type="button"
+                  onClick={onClearSelection}
+                  disabled={submitting}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer touch-manipulation"
+                >
+                  <RotateCcw size={13} />
+                  Limpiar
+                </button>
+              )}
+
               <button
                 type="button"
-                onClick={onClearSelection}
+                onClick={onExitFastCapture}
                 disabled={submitting}
-                className="inline-flex items-center gap-1 px-2.5 py-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 cursor-pointer"
+                className="inline-flex items-center gap-1 px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 cursor-pointer touch-manipulation min-h-[36px]"
               >
-                <RotateCcw size={13} />
-                Limpiar
+                <X size={14} />
+                Salir
               </button>
-            )}
-
-            <button
-              type="button"
-              onClick={onExitFastCapture}
-              disabled={submitting}
-              className="inline-flex items-center gap-1 px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-colors disabled:opacity-50 cursor-pointer"
-            >
-              <X size={14} />
-              Salir
-            </button>
+            </div>
           </div>
-        </div>
 
-        {/* Action Pills Row */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-          {PRIMARY_ACTIONS.map((action) => {
-            const isSelected = selectedAction === action.type;
-            return (
-              <button
-                key={action.type}
-                type="button"
-                onClick={() => handleSelectAction(action.type)}
-                className={`px-3.5 py-2 rounded-xl text-xs font-extrabold border transition-all shrink-0 cursor-pointer flex items-center gap-1.5 ${
-                  isSelected ? action.activeColor : action.badgeColor
-                }`}
-              >
-                {action.type === 'HEALTHY' && <CheckCircle2 size={14} />}
-                {action.label}
-              </button>
-            );
-          })}
+          {/* Action Pills Row */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+            {PRIMARY_ACTIONS.map((action) => {
+              const isSelected = selectedAction === action.type;
+              return (
+                <button
+                  key={action.type}
+                  type="button"
+                  onClick={() => handleSelectAction(action.type)}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-extrabold border transition-all shrink-0 cursor-pointer flex items-center gap-1.5 touch-manipulation min-h-[40px] ${
+                    isSelected ? action.activeColor : action.badgeColor
+                  }`}
+                >
+                  {action.type === 'HEALTHY' && <CheckCircle2 size={14} />}
+                  {action.label}
+                </button>
+              );
+            })}
 
-          {/* More actions button & dropdown */}
-          <div className="relative shrink-0">
+            {/* More actions floating toggle button */}
             <button
+              ref={moreButtonRef}
+              id="more-actions-btn"
               type="button"
-              onClick={() => setIsMoreOpen(!isMoreOpen)}
-              className={`px-3 py-2 rounded-xl text-xs font-bold border transition-colors flex items-center gap-1 cursor-pointer ${
-                MORE_ACTIONS.some((a) => a.type === selectedAction)
-                  ? 'bg-slate-800 text-white border-slate-800 shadow-sm'
+              aria-expanded={isMoreOpen}
+              aria-haspopup="menu"
+              aria-controls="more-actions-popover"
+              onClick={handleToggleMore}
+              className={`px-3.5 py-2 rounded-xl text-xs font-extrabold border transition-colors flex items-center gap-1.5 cursor-pointer shrink-0 touch-manipulation min-h-[40px] ${
+                isMoreActionSelected
+                  ? 'bg-slate-800 text-white border-slate-800 shadow-sm ring-2 ring-slate-700/40'
+                  : isMoreOpen
+                  ? 'bg-slate-200 text-slate-900 border-slate-300'
                   : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
               }`}
             >
               <MoreHorizontal size={14} />
-              Más
+              {isMoreActionSelected
+                ? MORE_ACTIONS.find((a) => a.type === selectedAction)?.label || 'Más'
+                : 'Más'}
               <ChevronUp
                 size={13}
                 className={`transition-transform duration-200 ${isMoreOpen ? 'rotate-180' : ''}`}
               />
             </button>
-
-            {isMoreOpen && (
-              <div className="absolute bottom-full mb-2 right-0 bg-white border border-slate-200 rounded-2xl shadow-xl p-2 w-48 flex flex-col gap-1 z-50 animate-in fade-in zoom-in-95">
-                <span className="text-[10px] font-bold text-slate-400 px-2 py-1 uppercase tracking-wider">
-                  Otros Hallazgos
-                </span>
-                {MORE_ACTIONS.map((action) => (
-                  <button
-                    key={action.type}
-                    type="button"
-                    onClick={() => handleSelectAction(action.type)}
-                    className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer ${
-                      selectedAction === action.type
-                        ? 'bg-indigo-600 text-white'
-                        : 'text-slate-700 hover:bg-slate-100'
-                    }`}
-                  >
-                    {action.label}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
-        </div>
 
-        {/* Surface Selector (Shown exclusively for surface-oriented findings) */}
-        {selectedAction !== null && isActionSurfaceOriented && (
-          <div className="flex flex-wrap items-center gap-1.5 p-2 bg-slate-50 border border-slate-200 rounded-2xl">
-            <span className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider px-1">
-              Superficies:
-            </span>
-
-            <button
-              type="button"
-              onClick={() => handleToggleSurface('OI')}
-              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
-                hasOI && !isWholeTooth
-                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
-                  : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-              }`}
-              title="Oclusal para premolares/molares, Incisal para incisivos/caninos"
-            >
-              O / I
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleToggleSurface('MESIAL')}
-              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
-                activeSurfaces.includes('MESIAL') && !isWholeTooth
-                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
-                  : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-              }`}
-            >
-              Mesial (M)
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleToggleSurface('DISTAL')}
-              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
-                activeSurfaces.includes('DISTAL') && !isWholeTooth
-                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
-                  : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-              }`}
-            >
-              Distal (D)
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleToggleSurface('VESTIBULAR')}
-              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
-                activeSurfaces.includes('VESTIBULAR') && !isWholeTooth
-                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
-                  : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-              }`}
-            >
-              Vestibular (V)
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleToggleSurface('LINGUAL_PALATAL')}
-              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
-                activeSurfaces.includes('LINGUAL_PALATAL') && !isWholeTooth
-                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
-                  : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-              }`}
-            >
-              Lingual/Palatino (L/P)
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleToggleSurface('WHOLE_TOOTH')}
-              className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
-                isWholeTooth
-                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
-                  : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
-              }`}
-            >
-              Pieza Completa
-            </button>
-          </div>
-        )}
-
-        {/* Optional Notes Toggle & Input (Aligned with backend 2000 char max) */}
-        {showNotes ? (
-          <div className="flex items-center gap-2 animate-in fade-in">
-            <input
-              type="text"
-              value={notes}
-              onChange={(e) => handleNotesChange(e.target.value)}
-              placeholder="Observaciones clínicas opcionales para este lote..."
-              className="flex-1 text-xs p-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              maxLength={2000}
-            />
-            <button
-              type="button"
-              onClick={() => setShowNotes(false)}
-              className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1 cursor-pointer font-medium"
-            >
-              Cerrar
-            </button>
-          </div>
-        ) : (
-          <div className="flex items-center justify-start">
-            <button
-              type="button"
-              onClick={() => setShowNotes(true)}
-              className="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold cursor-pointer"
-            >
-              + Añadir nota opcional
-            </button>
-          </div>
-        )}
-
-        {/* Bottom Submission Bar */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1 border-t border-slate-100">
-          <div className="text-xs text-slate-600">
-            {actionLabel ? (
-              <>
-                <span className="font-extrabold text-slate-900">{actionLabel}</span>
-                {isActionSurfaceOriented && surfacesSummary && (
-                  <span className="text-slate-500"> · {surfacesSummary}</span>
-                )}
-                {selectedCount > 0 ? (
-                  <span className="text-indigo-700 font-bold"> · {selectedCount} pieza{selectedCount !== 1 ? 's' : ''}</span>
-                ) : (
-                  <span className="text-slate-400"> · Toca piezas para seleccionar</span>
-                )}
-              </>
-            ) : (
-              <span className="text-slate-500 font-medium">
-                {selectedCount > 0
-                  ? `${selectedCount} pieza${selectedCount !== 1 ? 's' : ''} seleccionada${selectedCount !== 1 ? 's' : ''} — Elige una acción clínica`
-                  : 'Toca piezas y elige una acción clínica'}
+          {/* Surface Selector (Shown exclusively for surface-oriented findings) */}
+          {selectedAction !== null && isActionSurfaceOriented && (
+            <div className="flex flex-wrap items-center gap-1.5 p-2 bg-slate-50 border border-slate-200 rounded-2xl animate-in fade-in">
+              <span className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider px-1">
+                Superficies:
               </span>
-            )}
-          </div>
 
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={isSubmitDisabled}
-            className={`w-full sm:w-auto px-6 py-2.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer ${
-              selectedAction === 'HEALTHY'
-                ? 'bg-emerald-600 hover:bg-emerald-700 text-white disabled:bg-slate-200 disabled:text-slate-400'
-                : 'bg-indigo-600 hover:bg-indigo-700 text-white disabled:bg-slate-200 disabled:text-slate-400'
-            }`}
-          >
-            {submitting ? (
-              <>
-                <Loader2 size={16} className="animate-spin" />
-                Guardando lote...
-              </>
-            ) : selectedCount === 0 ? (
-              'Selecciona piezas'
-            ) : selectedAction === null ? (
-              'Elige una acción'
-            ) : (
-              `Aplicar a ${selectedCount} pieza${selectedCount !== 1 ? 's' : ''}`
-            )}
-          </button>
+              <button
+                type="button"
+                onClick={() => handleToggleSurface('OI')}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer touch-manipulation min-h-[38px] ${
+                  hasOI && !isWholeTooth
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                }`}
+                title="Oclusal para premolares/molares, Incisal para incisivos/caninos"
+              >
+                O / I
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleToggleSurface('MESIAL')}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer touch-manipulation min-h-[38px] ${
+                  activeSurfaces.includes('MESIAL') && !isWholeTooth
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                }`}
+              >
+                Mesial (M)
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleToggleSurface('DISTAL')}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer touch-manipulation min-h-[38px] ${
+                  activeSurfaces.includes('DISTAL') && !isWholeTooth
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                }`}
+              >
+                Distal (D)
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleToggleSurface('VESTIBULAR')}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer touch-manipulation min-h-[38px] ${
+                  activeSurfaces.includes('VESTIBULAR') && !isWholeTooth
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                }`}
+              >
+                Vestibular (V)
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleToggleSurface('LINGUAL_PALATAL')}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer touch-manipulation min-h-[38px] ${
+                  activeSurfaces.includes('LINGUAL_PALATAL') && !isWholeTooth
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                }`}
+              >
+                Lingual / Palatino (L/P)
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleToggleSurface('WHOLE_TOOTH')}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer touch-manipulation min-h-[38px] ${
+                  isWholeTooth
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                    : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                }`}
+              >
+                Pieza Completa
+              </button>
+            </div>
+          )}
+
+          {/* Conflict Warning Alert if Batch Validation failed */}
+          {failures.length > 0 && (
+            <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between gap-2 text-xs text-amber-900 animate-in fade-in">
+              <div className="flex items-center gap-2">
+                <AlertCircle size={16} className="text-amber-600 shrink-0" />
+                <span>
+                  <strong className="font-bold">{failures.length} pieza(s)</strong> no pueden registrarse con esta acción.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => onRemoveConflictedTeeth(failures.map((f) => f.toothNumber))}
+                className="px-2 py-1 bg-amber-200 hover:bg-amber-300 text-amber-900 rounded font-bold text-[11px] transition-colors cursor-pointer"
+              >
+                Excluir en conflicto
+              </button>
+            </div>
+          )}
+
+          {/* Optional Notes Section */}
+          {showNotes && (
+            <div className="flex flex-col gap-1 animate-in fade-in">
+              <div className="flex items-center justify-between text-xs text-slate-500">
+                <label htmlFor="fast-capture-notes" className="font-semibold">
+                  Nota clínica común (opcional):
+                </label>
+                <span className="text-[10px] text-slate-400">
+                  {notes.length}/2000
+                </span>
+              </div>
+              <textarea
+                id="fast-capture-notes"
+                rows={2}
+                maxLength={2000}
+                value={notes}
+                onChange={(e) => handleNotesChange(e.target.value)}
+                placeholder="Observaciones clínicas aplicables a las piezas seleccionadas..."
+                className="w-full text-xs p-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+              />
+            </div>
+          )}
+
+          {/* Bottom Action Bar: Preview & Apply Button */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setShowNotes(!showNotes)}
+                className="text-xs font-bold text-slate-600 hover:text-indigo-600 transition-colors flex items-center gap-1 cursor-pointer py-1"
+              >
+                <span>{showNotes ? '— Ocultar nota' : '+ Agregar nota'}</span>
+                {notes.trim() && <span className="w-1.5 h-1.5 rounded-full bg-indigo-600" />}
+              </button>
+
+              {/* Dynamic operation preview badge */}
+              {selectedAction !== null && (
+                <div className="text-xs text-slate-700 font-medium flex items-center gap-1.5">
+                  <span className="font-bold text-slate-900">{actionLabel}</span>
+                  {surfacesSummary && (
+                    <span className="text-slate-500">· {surfacesSummary}</span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <button
+              type="button"
+              disabled={isSubmitDisabled}
+              onClick={handleSubmit}
+              className="inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl font-extrabold text-sm shadow-md hover:shadow-lg disabled:shadow-none transition-all cursor-pointer disabled:cursor-not-allowed touch-manipulation min-h-[44px]"
+            >
+              {submitting ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  <span>Aplicando en {selectedCount} piezas...</span>
+                </>
+              ) : selectedAction === null ? (
+                <span>Elige una acción</span>
+              ) : selectedCount === 0 ? (
+                <span>Selecciona piezas arriba</span>
+              ) : !hasSurfaceSelection ? (
+                <span>Selecciona superficie</span>
+              ) : (
+                <>
+                  <Sparkles size={16} />
+                  <span>
+                    Aplicar {actionLabel} a {selectedCount} {selectedCount === 1 ? 'pieza' : 'piezas'}
+                  </span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* Floating More Actions Popover (Rendered at document.body level) */}
+      {isMoreOpen && popoverCoords && createPortal(
+        <div
+          ref={popoverRef}
+          id="more-actions-popover"
+          role="menu"
+          aria-orientation="vertical"
+          aria-labelledby="more-actions-btn"
+          style={{
+            position: 'fixed',
+            left: `${popoverCoords.left}px`,
+            ...(popoverCoords.top !== undefined ? { top: `${popoverCoords.top}px` } : {}),
+            ...(popoverCoords.bottom !== undefined ? { bottom: `${popoverCoords.bottom}px` } : {}),
+            maxHeight: `${popoverCoords.maxHeight}px`,
+            width: '220px',
+            zIndex: 90
+          }}
+          className="bg-white/98 backdrop-blur-md border border-slate-200 rounded-2xl shadow-2xl p-2 flex flex-col gap-1 overflow-y-auto animate-in fade-in zoom-in-95 duration-150"
+        >
+          <span className="text-[10px] font-extrabold text-slate-400 px-3 py-1 uppercase tracking-wider">
+            Otros Hallazgos
+          </span>
+          {MORE_ACTIONS.map((action) => {
+            const isSelected = selectedAction === action.type;
+            return (
+              <button
+                key={action.type}
+                role="menuitem"
+                type="button"
+                onClick={() => handleSelectAction(action.type)}
+                className={`w-full text-left px-3 py-2.5 rounded-xl text-xs font-bold transition-colors cursor-pointer flex items-center justify-between touch-manipulation min-h-[44px] ${
+                  isSelected
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-700 hover:bg-indigo-50 hover:text-indigo-700'
+                }`}
+              >
+                <span>{action.label}</span>
+                {isSelected && <Check size={14} className="stroke-[3]" />}
+              </button>
+            );
+          })}
+        </div>,
+        document.body
+      )}
+    </>
   );
 };

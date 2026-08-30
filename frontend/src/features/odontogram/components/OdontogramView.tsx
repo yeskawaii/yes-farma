@@ -23,6 +23,7 @@ import { ToothGraphic } from './ToothGraphic';
 import { ToothDetailModal } from './ToothDetailModal';
 import { FastCaptureDock } from './FastCaptureDock';
 import { MobileQuadrantView } from './MobileQuadrantView';
+import { ExitFastCaptureDialog } from './ExitFastCaptureDialog';
 
 interface OdontogramViewProps {
   patientId: string;
@@ -78,6 +79,8 @@ export const OdontogramView: React.FC<OdontogramViewProps> = ({ patientId }) => 
   const [batchFailures, setBatchFailures] = useState<BatchValidationFailure[]>([]);
   const [batchSuccessMessage, setBatchSuccessMessage] = useState<string | null>(null);
   const [resetDockTrigger, setResetDockTrigger] = useState(0);
+  const [isExitConfirmOpen, setIsExitConfirmOpen] = useState(false);
+  const [dockHeight, setDockHeight] = useState(160);
 
   // Semantic Idempotency RequestId reference
   const requestIdRef = useRef<string | null>(null);
@@ -120,16 +123,12 @@ export const OdontogramView: React.FC<OdontogramViewProps> = ({ patientId }) => 
 
   const handleToggleFastCapture = () => {
     if (isFastCaptureActive) {
-      // Exiting fast capture mode
+      // If there's an ongoing selection or dirty state, request confirmation modal
       if (selectedTeeth.size > 0) {
-        const confirmExit = window.confirm('Tienes piezas seleccionadas en Captura rápida. ¿Deseas salir y descartar la selección?');
-        if (!confirmExit) return;
+        setIsExitConfirmOpen(true);
+      } else {
+        handleConfirmExitFastCapture();
       }
-      setSelectedTeeth(new Set());
-      setBatchFailures([]);
-      setBatchSuccessMessage(null);
-      invalidateRequestId();
-      setIsFastCaptureActive(false);
     } else {
       // Entering fast capture mode
       setSelectedTooth(null);
@@ -140,6 +139,16 @@ export const OdontogramView: React.FC<OdontogramViewProps> = ({ patientId }) => 
       setResetDockTrigger((prev) => prev + 1);
       setIsFastCaptureActive(true);
     }
+  };
+
+  const handleConfirmExitFastCapture = () => {
+    setIsExitConfirmOpen(false);
+    setSelectedTeeth(new Set());
+    setBatchFailures([]);
+    setBatchSuccessMessage(null);
+    invalidateRequestId();
+    setResetDockTrigger((prev) => prev + 1);
+    setIsFastCaptureActive(false);
   };
 
   const handleToggleToothSelection = (toothNumber: number) => {
@@ -350,7 +359,12 @@ export const OdontogramView: React.FC<OdontogramViewProps> = ({ patientId }) => 
   }
 
   return (
-    <div className={`flex flex-col gap-6 animate-in fade-in duration-150 ${isFastCaptureActive ? 'pb-48 md:pb-56' : ''}`}>
+    <div
+      className="flex flex-col gap-6 animate-in fade-in duration-150"
+      style={{
+        paddingBottom: isFastCaptureActive ? `${dockHeight + 24}px` : undefined
+      }}
+    >
       {/* Header & KPI Summary */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col gap-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -859,8 +873,16 @@ export const OdontogramView: React.FC<OdontogramViewProps> = ({ patientId }) => 
           failures={batchFailures}
           onRemoveConflictedTeeth={handleRemoveConflictedTeeth}
           resetTrigger={resetDockTrigger}
+          onHeightChange={setDockHeight}
         />
       )}
+
+      {/* Exit Fast Capture Confirmation Dialog */}
+      <ExitFastCaptureDialog
+        isOpen={isExitConfirmOpen}
+        onConfirmExit={handleConfirmExitFastCapture}
+        onCancel={() => setIsExitConfirmOpen(false)}
+      />
     </div>
   );
 };
