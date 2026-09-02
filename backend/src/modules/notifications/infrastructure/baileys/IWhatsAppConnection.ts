@@ -1,4 +1,8 @@
-import { IBaileysMessageSender, WhatsAppConnectionState } from './BaileysTypes';
+import {
+  IBaileysMessageSender,
+  WhatsAppConnectionState,
+  WhatsAppDisconnectReason
+} from './BaileysTypes';
 
 export interface WaitForAuthPersistenceOptions {
   timeoutMs?: number | undefined;
@@ -7,6 +11,7 @@ export interface WaitForAuthPersistenceOptions {
 export interface IWhatsAppConnection {
   getState(): WhatsAppConnectionState;
   getLatestQr(): string | null;
+  getDisconnectReason?(): WhatsAppDisconnectReason | null;
   start(): Promise<void>;
   close(): Promise<void>;
   getMessageSender(): IBaileysMessageSender | null;

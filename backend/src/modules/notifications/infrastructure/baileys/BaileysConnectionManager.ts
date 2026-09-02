@@ -7,13 +7,15 @@ import {
   IBaileysMessageSender,
   IBaileysSocketFactory,
   IBaileysSocketInstance,
-  WhatsAppConnectionState
+  WhatsAppConnectionState,
+  WhatsAppDisconnectReason
 } from './BaileysTypes';
 import { DefaultBaileysSocketFactory } from './DefaultBaileysSocketFactory';
 
 export class BaileysConnectionManager implements IWhatsAppConnection, IBaileysMessageSender {
   private state: WhatsAppConnectionState = 'DISCONNECTED';
   private latestQr: string | null = null;
+  private disconnectReason: WhatsAppDisconnectReason | null = null;
   private socket: IBaileysSocketInstance | null = null;
   private readonly socketFactory: IBaileysSocketFactory;
 
@@ -37,6 +39,10 @@ export class BaileysConnectionManager implements IWhatsAppConnection, IBaileysMe
 
   getLatestQr(): string | null {
     return this.latestQr;
+  }
+
+  getDisconnectReason(): WhatsAppDisconnectReason | null {
+    return this.disconnectReason;
   }
 
   getMessageSender(): IBaileysMessageSender | null {
@@ -130,6 +136,7 @@ export class BaileysConnectionManager implements IWhatsAppConnection, IBaileysMe
     this.successfulCredentialPersistenceSinceStart = false;
     this.persistenceFailureSinceStart = false;
     this.hasReportedCloseError = false;
+    this.disconnectReason = null;
     this.persistenceChain = Promise.resolve();
     this.notifyPersistenceFailure(new Error('WHATSAPP_CONNECTION_RESET'));
 
@@ -154,6 +161,7 @@ export class BaileysConnectionManager implements IWhatsAppConnection, IBaileysMe
         if (connection === 'open') {
           this.latestQr = null;
           this.state = 'CONNECTED';
+          this.disconnectReason = null;
         }
 
         if (connection === 'close') {
@@ -181,8 +189,16 @@ export class BaileysConnectionManager implements IWhatsAppConnection, IBaileysMe
 
           if (statusCode === DisconnectReason.loggedOut || statusCode === 401) {
             this.state = 'LOGGED_OUT';
+            this.disconnectReason = 'LOGGED_OUT';
+          } else if (statusCode === DisconnectReason.restartRequired || statusCode === 515) {
+            this.state = 'RECONNECTING';
+            this.disconnectReason = 'RESTART_REQUIRED';
+          } else if (statusCode !== undefined) {
+            this.state = 'RECONNECTING';
+            this.disconnectReason = 'TEMPORARY_DISCONNECT';
           } else {
             this.state = 'RECONNECTING';
+            this.disconnectReason = 'UNKNOWN';
           }
         }
       });
@@ -235,6 +251,7 @@ export class BaileysConnectionManager implements IWhatsAppConnection, IBaileysMe
     }
     this.latestQr = null;
     this.state = 'DISCONNECTED';
+    this.disconnectReason = null;
 
     if (this.persistenceFailureSinceStart && !this.hasReportedCloseError) {
       this.hasReportedCloseError = true;

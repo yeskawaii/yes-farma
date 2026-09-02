@@ -85,6 +85,17 @@ export class WhatsAppProbeRunner {
           return { status: 'FAIL' };
         }
 
+        if (state === 'RECONNECTING') {
+          const reason = this.connection.getDisconnectReason
+            ? this.connection.getDisconnectReason()
+            : null;
+          if (reason === 'RESTART_REQUIRED') {
+            this.logger.error('WHATSAPP_CONNECTION_PROBE=FAIL');
+            await this.connection.close();
+            return { status: 'FAIL' };
+          }
+        }
+
         if (Date.now() - startTime >= this.timeoutMs) {
           this.logger.error('WHATSAPP_CONNECTION_PROBE=TIMEOUT');
           await this.connection.close();

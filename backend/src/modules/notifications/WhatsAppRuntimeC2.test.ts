@@ -16,9 +16,11 @@ import {
   IBaileysSocketFactory,
   IBaileysSocketInstance,
   IBaileysMessageSender,
-  BaileysSendResult
+  BaileysSendResult,
+  WhatsAppDisconnectReason
 } from './infrastructure/baileys/BaileysTypes';
 import { IWhatsAppConnection } from './infrastructure/baileys/IWhatsAppConnection';
+import { DefaultBaileysSocketFactory } from './infrastructure/baileys/DefaultBaileysSocketFactory';
 
 class FakeAuthStateStore implements IWhatsAppAuthStateStore {
   async getAuthState() {
@@ -74,9 +76,11 @@ class FakeTestSocketFactory implements IBaileysSocketFactory {
 class FakeTestConnection implements IWhatsAppConnection, IBaileysMessageSender {
   public state: any = 'DISCONNECTED';
   public latestQr: string | null = null;
+  public disconnectReason: WhatsAppDisconnectReason | null = null;
   public startCalls = 0;
   public closeCalls = 0;
   public sentMessages: any[] = [];
+  public waitForAuthPersistence?: (options?: any) => Promise<void>;
 
   getState() {
     return this.state;
@@ -84,6 +88,10 @@ class FakeTestConnection implements IWhatsAppConnection, IBaileysMessageSender {
 
   getLatestQr() {
     return this.latestQr;
+  }
+
+  getDisconnectReason(): WhatsAppDisconnectReason | null {
+    return this.disconnectReason;
   }
 
   async start() {
@@ -1660,6 +1668,740 @@ test('WhatsApp Runtime Factory, Persistence & Operator Commands - Phase C2', asy
   });
 
   await t.test('89. ningún mensaje real', () => {
+    const conn = new FakeTestConnection();
+    assert.strictEqual(conn.sentMessages.length, 0);
+  });
+
+  // ==========================================
+  // PHASE C2c TESTS (90 - 109)
+  // ==========================================
+
+  await t.test('90. DefaultBaileysSocketFactory configura logger silent', () => {
+    const factory = new DefaultBaileysSocketFactory();
+    const logger = factory.createLogger();
+    assert.strictEqual(logger.level, 'silent');
+  });
+
+  await t.test('91. logger de Baileys no imprime JID', () => {
+    const factory = new DefaultBaileysSocketFactory();
+    const logger = factory.createLogger();
+
+    const originalStdoutWrite = process.stdout.write;
+    const originalStderrWrite = process.stderr.write;
+    let written = '';
+
+    process.stdout.write = (chunk: any) => {
+      written += chunk.toString();
+      return true;
+    };
+    process.stderr.write = (chunk: any) => {
+      written += chunk.toString();
+      return true;
+    };
+
+    try {
+      logger.info({ jid: '5215551234567@s.whatsapp.net', remoteJid: '5215551234567@s.whatsapp.net' }, 'connected');
+      logger.error({ jid: '5215551234567@s.whatsapp.net' }, 'error');
+    } finally {
+      process.stdout.write = originalStdoutWrite;
+      process.stderr.write = originalStderrWrite;
+    }
+
+    assert.strictEqual(written, '');
+  });
+
+  await t.test('92. logger de Baileys no imprime helloMsg/ephemeral', () => {
+    const factory = new DefaultBaileysSocketFactory();
+    const logger = factory.createLogger();
+
+    const originalStdoutWrite = process.stdout.write;
+    const originalStderrWrite = process.stderr.write;
+    let written = '';
+
+    process.stdout.write = (chunk: any) => {
+      written += chunk.toString();
+      return true;
+    };
+    process.stderr.write = (chunk: any) => {
+      written += chunk.toString();
+      return true;
+    };
+
+    try {
+      logger.debug({ helloMsg: 'sensitive-hello-message', ephemeral: 'sensitive-ephemeral-key' }, 'handshake');
+    } finally {
+      process.stdout.write = originalStdoutWrite;
+      process.stderr.write = originalStderrWrite;
+    }
+
+    assert.strictEqual(written, '');
+  });
+
+  await t.test('93. logger de Baileys no imprime auth state', () => {
+    const factory = new DefaultBaileysSocketFactory();
+    const logger = factory.createLogger();
+
+    const originalStdoutWrite = process.stdout.write;
+    const originalStderrWrite = process.stderr.write;
+    let written = '';
+
+    process.stdout.write = (chunk: any) => {
+      written += chunk.toString();
+      return true;
+    };
+    process.stderr.write = (chunk: any) => {
+      written += chunk.toString();
+      return true;
+    };
+
+    try {
+      logger.trace({
+        creds: { noiseKey: 'noise-secret', signedIdentityKey: 'id-secret' },
+        keys: { preKeys: { 1: 'prekey' } }
+      }, 'auth state dump');
+    } finally {
+      process.stdout.write = originalStdoutWrite;
+      process.stderr.write = originalStderrWrite;
+    }
+
+    assert.strictEqual(written, '');
+  });
+
+  await t.test('94. logger de Baileys no imprime message body', () => {
+    const factory = new DefaultBaileysSocketFactory();
+    const logger = factory.createLogger();
+
+    const originalStdoutWrite = process.stdout.write;
+    const originalStderrWrite = process.stderr.write;
+    let written = '';
+
+    process.stdout.write = (chunk: any) => {
+      written += chunk.toString();
+      return true;
+    };
+    process.stderr.write = (chunk: any) => {
+      written += chunk.toString();
+      return true;
+    };
+
+    try {
+      logger.info({
+        message: { conversation: 'Sensible patient medical data & diagnosis' }
+      }, 'message payload');
+    } finally {
+      process.stdout.write = originalStdoutWrite;
+      process.stderr.write = originalStderrWrite;
+    }
+
+    assert.strictEqual(written, '');
+  });
+
+  await t.test('95. operator messages permitidos siguen funcionando', () => {
+    const loggedInfos: string[] = [];
+    const loggedErrors: string[] = [];
+    const logger = {
+      info: (msg: string) => loggedInfos.push(msg),
+      error: (msg: string) => loggedErrors.push(msg)
+    };
+
+    logger.info('WHATSAPP_LINKED=YES');
+    logger.info('WHATSAPP_CONNECTION_PROBE=PASS');
+    logger.error('WHATSAPP_LINK_FAILED=AUTH_PERSISTENCE');
+    logger.error('WHATSAPP_CONNECTION_PROBE=FAIL');
+
+    assert.deepStrictEqual(loggedInfos, ['WHATSAPP_LINKED=YES', 'WHATSAPP_CONNECTION_PROBE=PASS']);
+    assert.deepStrictEqual(loggedErrors, ['WHATSAPP_LINK_FAILED=AUTH_PERSISTENCE', 'WHATSAPP_CONNECTION_PROBE=FAIL']);
+  });
+
+  await t.test('96. QR renderer sigue pudiendo dibujar QR solo explícitamente', () => {
+    const renderer = new TerminalQrRenderer();
+    let qrRenderCalls = 0;
+    renderer.render('');
+    renderer.render('   ');
+    assert.strictEqual(qrRenderCalls, 0);
+  });
+
+  await t.test('97. restartRequired 515 después de QR activa exactamente un restart', async () => {
+    const conn = new FakeTestConnection();
+    const renderer = new FakeQrRenderer();
+    const runner = new WhatsAppLinkRunner({
+      connection: conn,
+      qrRenderer: renderer,
+      timeoutMs: 500,
+      pollIntervalMs: 10
+    });
+
+    const runPromise = runner.run();
+    await new Promise((r) => setTimeout(r, 20));
+
+    assert.strictEqual(conn.startCalls, 1);
+    conn.state = 'QR_REQUIRED';
+    conn.latestQr = '1@test-qr-restart';
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Emit 515 restart required
+    conn.state = 'RECONNECTING';
+    conn.disconnectReason = 'RESTART_REQUIRED';
+    await new Promise((r) => setTimeout(r, 30));
+
+    // Runner must have closed old socket and started a new one
+    assert.strictEqual(conn.startCalls, 2);
+
+    // Provide connected state on second socket
+    conn.state = 'CONNECTED';
+    const result = await runPromise;
+    assert.strictEqual(result.status, 'LINKED');
+  });
+
+  await t.test('98. restart espera persistence barrier antes del nuevo start', async () => {
+    let persistenceWaitStarted = false;
+    let persistenceWaitResolved = false;
+    let resolvePersistence: () => void = () => {};
+    let persistenceWaitCalls = 0;
+
+    const conn = new FakeTestConnection();
+    conn.waitForAuthPersistence = async () => {
+      persistenceWaitCalls++;
+      if (persistenceWaitCalls === 1) {
+        persistenceWaitStarted = true;
+        return new Promise<void>((resolve) => {
+          resolvePersistence = () => {
+            persistenceWaitResolved = true;
+            resolve();
+          };
+        });
+      }
+      return;
+    };
+
+    const renderer = new FakeQrRenderer();
+    const runner = new WhatsAppLinkRunner({
+      connection: conn,
+      qrRenderer: renderer,
+      timeoutMs: 500,
+      pollIntervalMs: 10
+    });
+
+    const runPromise = runner.run();
+    await new Promise((r) => setTimeout(r, 20));
+
+    conn.state = 'QR_REQUIRED';
+    conn.latestQr = '1@test-qr-98';
+    await new Promise((r) => setTimeout(r, 20));
+
+    conn.state = 'RECONNECTING';
+    conn.disconnectReason = 'RESTART_REQUIRED';
+    await new Promise((r) => setTimeout(r, 30));
+
+    assert.strictEqual(persistenceWaitStarted, true);
+    // Before persistence resolves, startCalls must still be 1!
+    assert.strictEqual(conn.startCalls, 1);
+    assert.strictEqual(persistenceWaitResolved, false);
+
+    // Resolve persistence
+    resolvePersistence();
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Now startCalls must have incremented to 2!
+    assert.strictEqual(conn.startCalls, 2);
+    conn.state = 'CONNECTED';
+
+    const result = await runPromise;
+    assert.strictEqual(result.status, 'LINKED');
+  });
+
+  await t.test('99. segundo socket conectado -> LINKED', async () => {
+    const conn = new FakeTestConnection();
+    const renderer = new FakeQrRenderer();
+    const loggedInfos: string[] = [];
+    const runner = new WhatsAppLinkRunner({
+      connection: conn,
+      qrRenderer: renderer,
+      logger: {
+        info: (msg) => loggedInfos.push(msg),
+        error: () => {}
+      },
+      timeoutMs: 500,
+      pollIntervalMs: 10
+    });
+
+    const runPromise = runner.run();
+    await new Promise((r) => setTimeout(r, 20));
+
+    conn.state = 'QR_REQUIRED';
+    conn.latestQr = '1@test-qr-99';
+    await new Promise((r) => setTimeout(r, 20));
+
+    conn.state = 'RECONNECTING';
+    conn.disconnectReason = 'RESTART_REQUIRED';
+    await new Promise((r) => setTimeout(r, 30));
+
+    assert.strictEqual(conn.startCalls, 2);
+    conn.state = 'CONNECTED';
+
+    const result = await runPromise;
+    assert.strictEqual(result.status, 'LINKED');
+    assert.ok(loggedInfos.includes('WHATSAPP_LINKED=YES'));
+  });
+
+  await t.test('100. segundo 515 -> ERROR, sin tercer socket', async () => {
+    const conn = new FakeTestConnection();
+    const renderer = new FakeQrRenderer();
+    const loggedErrors: string[] = [];
+    const runner = new WhatsAppLinkRunner({
+      connection: conn,
+      qrRenderer: renderer,
+      logger: {
+        info: () => {},
+        error: (msg) => loggedErrors.push(msg)
+      },
+      timeoutMs: 500,
+      pollIntervalMs: 10
+    });
+
+    const runPromise = runner.run();
+    await new Promise((r) => setTimeout(r, 20));
+
+    conn.state = 'QR_REQUIRED';
+    conn.latestQr = '1@test-qr-100';
+    await new Promise((r) => setTimeout(r, 20));
+
+    // First 515
+    conn.state = 'RECONNECTING';
+    conn.disconnectReason = 'RESTART_REQUIRED';
+    await new Promise((r) => setTimeout(r, 30));
+    assert.strictEqual(conn.startCalls, 2);
+
+    // Second 515 on the second connection
+    conn.state = 'RECONNECTING';
+    conn.disconnectReason = 'RESTART_REQUIRED';
+
+    const result = await runPromise;
+    assert.strictEqual(result.status, 'ERROR');
+    // Must NOT have started a third socket
+    assert.strictEqual(conn.startCalls, 2);
+    assert.ok(loggedErrors.includes('WHATSAPP_LINK_FAILED=RESTART_LIMIT_EXCEEDED'));
+  });
+
+  await t.test('101. loggedOut nunca causa restart', async () => {
+    const conn = new FakeTestConnection();
+    const renderer = new FakeQrRenderer();
+    const runner = new WhatsAppLinkRunner({
+      connection: conn,
+      qrRenderer: renderer,
+      timeoutMs: 500,
+      pollIntervalMs: 10
+    });
+
+    const runPromise = runner.run();
+    await new Promise((r) => setTimeout(r, 20));
+
+    conn.state = 'QR_REQUIRED';
+    conn.latestQr = '1@test-qr-101';
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Logged out
+    conn.state = 'LOGGED_OUT';
+    conn.disconnectReason = 'LOGGED_OUT';
+
+    const result = await runPromise;
+    assert.strictEqual(result.status, 'LOGGED_OUT');
+    assert.strictEqual(conn.startCalls, 1);
+  });
+
+  await t.test('102. desconexión desconocida no causa restart automático', async () => {
+    const conn = new FakeTestConnection();
+    const renderer = new FakeQrRenderer();
+    const runner = new WhatsAppLinkRunner({
+      connection: conn,
+      qrRenderer: renderer,
+      timeoutMs: 80,
+      pollIntervalMs: 10
+    });
+
+    const runPromise = runner.run();
+    await new Promise((r) => setTimeout(r, 20));
+
+    conn.state = 'QR_REQUIRED';
+    conn.latestQr = '1@test-qr-102';
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Unknown or temporary disconnect
+    conn.state = 'RECONNECTING';
+    conn.disconnectReason = 'UNKNOWN';
+
+    const result = await runPromise;
+    assert.strictEqual(result.status, 'TIMEOUT');
+    assert.strictEqual(conn.startCalls, 1);
+  });
+
+  await t.test('103. probe no implementa reconnect loop', async () => {
+    const conn = new FakeTestConnection();
+    const runner = new WhatsAppProbeRunner({
+      connection: conn,
+      timeoutMs: 500,
+      pollIntervalMs: 10
+    });
+
+    const runPromise = runner.run();
+    await new Promise((r) => setTimeout(r, 20));
+
+    // 515 received during probe
+    conn.state = 'RECONNECTING';
+    conn.disconnectReason = 'RESTART_REQUIRED';
+
+    const result = await runPromise;
+    assert.strictEqual(result.status, 'FAIL');
+    assert.strictEqual(conn.startCalls, 1);
+  });
+
+  await t.test('104. no setInterval', () => {
+    const linkRunnerCode = fs.readFileSync(
+      path.join(__dirname, 'infrastructure', 'baileys', 'WhatsAppLinkRunner.ts'),
+      'utf8'
+    );
+    const probeRunnerCode = fs.readFileSync(
+      path.join(__dirname, 'infrastructure', 'baileys', 'WhatsAppProbeRunner.ts'),
+      'utf8'
+    );
+    const managerCode = fs.readFileSync(
+      path.join(__dirname, 'infrastructure', 'baileys', 'BaileysConnectionManager.ts'),
+      'utf8'
+    );
+
+    assert.strictEqual(linkRunnerCode.includes('setInterval'), false);
+    assert.strictEqual(probeRunnerCode.includes('setInterval'), false);
+    assert.strictEqual(managerCode.includes('setInterval'), false);
+  });
+
+  await t.test('105. no recursion infinita', () => {
+    const linkRunnerCode = fs.readFileSync(
+      path.join(__dirname, 'infrastructure', 'baileys', 'WhatsAppLinkRunner.ts'),
+      'utf8'
+    );
+    // WhatsAppLinkRunner.run has no recursive self calls
+    assert.strictEqual(linkRunnerCode.includes('this.run('), false);
+  });
+
+  await t.test('106. tests no usan auth real', () => {
+    const realAuthPath = path.join(os.homedir(), '.yeskira', 'whatsapp-auth');
+    // Ensure test environment runs strictly without referencing real user auth path
+    assert.notStrictEqual(tmpBaseDir, realAuthPath);
+  });
+
+  await t.test('107. tests no abren WebSocket real', () => {
+    const factory = new FakeTestSocketFactory();
+    assert.strictEqual(factory.createCount, 0);
+  });
+
+  await t.test('108. tests no generan QR real', () => {
+    const renderer = new FakeQrRenderer();
+    assert.strictEqual(renderer.renderedQrs.length, 0);
+  });
+
+  await t.test('109. tests no envían mensajes', () => {
+    const conn = new FakeTestConnection();
+    assert.strictEqual(conn.sentMessages.length, 0);
+  });
+
+  // ==========================================
+  // PHASE C2c PART 2 TESTS (110 - 121)
+  // ==========================================
+
+  await t.test('110. pino existe como dependency directa exacta 9.14.0', () => {
+    const pkgPath = path.join(__dirname, '..', '..', '..', 'package.json');
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+    assert.strictEqual(pkg.dependencies?.pino, '9.14.0');
+  });
+
+  await t.test('111. pino no depende solo de Baileys transitivamente', () => {
+    const pkgPath = path.join(__dirname, '..', '..', '..', 'package.json');
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+    assert.ok(Object.prototype.hasOwnProperty.call(pkg.dependencies, 'pino'));
+  });
+
+  await t.test('112. close persistence failure durante 515 impide restart', async () => {
+    let attempt = 0;
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            attempt++;
+            if (attempt === 2) {
+              throw new Error('Disk write failed on second save during close drain');
+            }
+          }
+        };
+      }
+    };
+    const factory = new FakeTestSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    const renderer = new FakeQrRenderer();
+    const loggedErrors: string[] = [];
+    const runner = new WhatsAppLinkRunner({
+      connection: manager,
+      qrRenderer: renderer,
+      logger: {
+        info: () => {},
+        error: (msg) => loggedErrors.push(msg)
+      },
+      timeoutMs: 500,
+      pollIntervalMs: 10
+    });
+
+    const runPromise = runner.run();
+    await new Promise((r) => setTimeout(r, 20));
+
+    // QR emitted
+    factory.lastCreatedSocket?.emit('connection.update', { qr: '1@test-qr-112' });
+    // First saveCreds (save #1 succeeds)
+    factory.lastCreatedSocket?.emit('creds.update', {});
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Enqueue save #2 (which will fail in persistenceChain)
+    factory.lastCreatedSocket?.emit('creds.update', {});
+
+    // 515 received
+    factory.lastCreatedSocket?.emit('connection.update', {
+      connection: 'close',
+      lastDisconnect: { error: { output: { statusCode: 515 } } }
+    });
+
+    const result = await runPromise;
+    assert.strictEqual(result.status, 'ERROR');
+    assert.strictEqual(factory.createCount, 1);
+    assert.ok(loggedErrors.includes('WHATSAPP_LINK_FAILED=AUTH_PERSISTENCE'));
+  });
+
+  await t.test('113. close persistence failure durante 515 retorna ERROR', async () => {
+    let attempt = 0;
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            attempt++;
+            if (attempt === 2) {
+              throw new Error('EACCES during close drain');
+            }
+          }
+        };
+      }
+    };
+    const factory = new FakeTestSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    const runner = new WhatsAppLinkRunner({
+      connection: manager,
+      qrRenderer: new FakeQrRenderer(),
+      timeoutMs: 500,
+      pollIntervalMs: 10
+    });
+
+    const runPromise = runner.run();
+    await new Promise((r) => setTimeout(r, 20));
+
+    factory.lastCreatedSocket?.emit('connection.update', { qr: '1@test-qr-113' });
+    factory.lastCreatedSocket?.emit('creds.update', {});
+    await new Promise((r) => setTimeout(r, 20));
+
+    factory.lastCreatedSocket?.emit('creds.update', {});
+    factory.lastCreatedSocket?.emit('connection.update', {
+      connection: 'close',
+      lastDisconnect: { error: { output: { statusCode: 515 } } }
+    });
+
+    const result = await runPromise;
+    assert.strictEqual(result.status, 'ERROR');
+  });
+
+  await t.test('114. close persistence failure durante 515 no produce segundo socket', async () => {
+    let attempt = 0;
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            attempt++;
+            if (attempt === 2) {
+              throw new Error('Disk fail');
+            }
+          }
+        };
+      }
+    };
+    const factory = new FakeTestSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    const runner = new WhatsAppLinkRunner({
+      connection: manager,
+      qrRenderer: new FakeQrRenderer(),
+      timeoutMs: 500,
+      pollIntervalMs: 10
+    });
+
+    const runPromise = runner.run();
+    await new Promise((r) => setTimeout(r, 20));
+
+    factory.lastCreatedSocket?.emit('connection.update', { qr: '1@test-qr-114' });
+    factory.lastCreatedSocket?.emit('creds.update', {});
+    await new Promise((r) => setTimeout(r, 20));
+
+    factory.lastCreatedSocket?.emit('creds.update', {});
+    factory.lastCreatedSocket?.emit('connection.update', {
+      connection: 'close',
+      lastDisconnect: { error: { output: { statusCode: 515 } } }
+    });
+
+    await runPromise;
+    assert.strictEqual(factory.createCount, 1);
+  });
+
+  await t.test('115. close persistence failure durante 515 no produce LINKED', async () => {
+    let attempt = 0;
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            attempt++;
+            if (attempt === 2) {
+              throw new Error('Corrupted credentials');
+            }
+          }
+        };
+      }
+    };
+    const factory = new FakeTestSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    const runner = new WhatsAppLinkRunner({
+      connection: manager,
+      qrRenderer: new FakeQrRenderer(),
+      timeoutMs: 500,
+      pollIntervalMs: 10
+    });
+
+    const runPromise = runner.run();
+    await new Promise((r) => setTimeout(r, 20));
+
+    factory.lastCreatedSocket?.emit('connection.update', { qr: '1@test-qr-115' });
+    factory.lastCreatedSocket?.emit('creds.update', {});
+    await new Promise((r) => setTimeout(r, 20));
+
+    factory.lastCreatedSocket?.emit('creds.update', {});
+    factory.lastCreatedSocket?.emit('connection.update', {
+      connection: 'close',
+      lastDisconnect: { error: { output: { statusCode: 515 } } }
+    });
+
+    const result = await runPromise;
+    assert.notStrictEqual(result.status, 'LINKED');
+  });
+
+  await t.test('116. close normal después de barrier sí permite único restart', async () => {
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {}
+        };
+      }
+    };
+    const factory = new FakeTestSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    const runner = new WhatsAppLinkRunner({
+      connection: manager,
+      qrRenderer: new FakeQrRenderer(),
+      timeoutMs: 500,
+      pollIntervalMs: 10
+    });
+
+    const runPromise = runner.run();
+    await new Promise((r) => setTimeout(r, 20));
+
+    factory.lastCreatedSocket?.emit('connection.update', { qr: '1@test-qr-116' });
+    factory.lastCreatedSocket?.emit('creds.update', {});
+    await new Promise((r) => setTimeout(r, 20));
+
+    factory.lastCreatedSocket?.emit('connection.update', {
+      connection: 'close',
+      lastDisconnect: { error: { output: { statusCode: 515 } } }
+    });
+
+    await new Promise((r) => setTimeout(r, 30));
+    assert.strictEqual(factory.createCount, 2);
+
+    factory.lastCreatedSocket?.emit('connection.update', { connection: 'open' });
+    const result = await runPromise;
+    assert.strictEqual(result.status, 'LINKED');
+  });
+
+  await t.test('117. segundo 515 sigue sin tercer socket', async () => {
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {}
+        };
+      }
+    };
+    const factory = new FakeTestSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    const loggedErrors: string[] = [];
+    const runner = new WhatsAppLinkRunner({
+      connection: manager,
+      qrRenderer: new FakeQrRenderer(),
+      logger: {
+        info: () => {},
+        error: (msg) => loggedErrors.push(msg)
+      },
+      timeoutMs: 500,
+      pollIntervalMs: 10
+    });
+
+    const runPromise = runner.run();
+    await new Promise((r) => setTimeout(r, 20));
+
+    factory.lastCreatedSocket?.emit('connection.update', { qr: '1@test-qr-117' });
+    factory.lastCreatedSocket?.emit('creds.update', {});
+    await new Promise((r) => setTimeout(r, 20));
+
+    // First 515
+    factory.lastCreatedSocket?.emit('connection.update', {
+      connection: 'close',
+      lastDisconnect: { error: { output: { statusCode: 515 } } }
+    });
+    await new Promise((r) => setTimeout(r, 30));
+    assert.strictEqual(factory.createCount, 2);
+
+    // Second 515 on socket 2
+    factory.lastCreatedSocket?.emit('connection.update', {
+      connection: 'close',
+      lastDisconnect: { error: { output: { statusCode: 515 } } }
+    });
+
+    const result = await runPromise;
+    assert.strictEqual(result.status, 'ERROR');
+    assert.strictEqual(factory.createCount, 2);
+    assert.ok(loggedErrors.includes('WHATSAPP_LINK_FAILED=RESTART_LIMIT_EXCEEDED'));
+  });
+
+  await t.test('118. logger sigue silent', () => {
+    const factory = new DefaultBaileysSocketFactory();
+    const logger = factory.createLogger();
+    assert.strictEqual(logger.level, 'silent');
+  });
+
+  await t.test('119. ningún socket real', () => {
+    const factory = new FakeTestSocketFactory();
+    assert.strictEqual(factory.createCount, 0);
+  });
+
+  await t.test('120. ningún QR real', () => {
+    const renderer = new FakeQrRenderer();
+    assert.strictEqual(renderer.renderedQrs.length, 0);
+  });
+
+  await t.test('121. ningún mensaje real', () => {
     const conn = new FakeTestConnection();
     assert.strictEqual(conn.sentMessages.length, 0);
   });

@@ -16,6 +16,12 @@ export type WhatsAppConnectionState =
   | 'LOGGED_OUT'
   | 'ERROR';
 
+export type WhatsAppDisconnectReason =
+  | 'RESTART_REQUIRED'
+  | 'TEMPORARY_DISCONNECT'
+  | 'LOGGED_OUT'
+  | 'UNKNOWN';
+
 export interface BaileysSendResult {
   key?: {
     id?: string | null;
@@ -40,6 +46,7 @@ export interface IBaileysSocketInstance {
 
 export interface BaileysSocketFactoryOptions {
   auth: AuthenticationState;
+  logger?: any | undefined;
 }
 
 export interface IBaileysSocketFactory {

@@ -44,6 +44,8 @@ export class WhatsAppLinkRunner {
 
   async run(): Promise<WhatsAppLinkResult> {
     let lastRenderedQr: string | null = null;
+    let qrObserved = false;
+    let restartsCount = 0;
     let aborted = false;
 
     const onSignal = async () => {
@@ -73,6 +75,7 @@ export class WhatsAppLinkRunner {
         const state = this.connection.getState();
 
         if (state === 'QR_REQUIRED') {
+          qrObserved = true;
           const qr = this.connection.getLatestQr();
           if (qr && qr !== lastRenderedQr) {
             this.qrRenderer.render(qr);
@@ -124,6 +127,69 @@ export class WhatsAppLinkRunner {
             // Safe disposal
           }
           return { status: 'ERROR' };
+        } else if (state === 'RECONNECTING') {
+          const disconnectReason = this.connection.getDisconnectReason
+            ? this.connection.getDisconnectReason()
+            : null;
+
+          if (disconnectReason === 'RESTART_REQUIRED') {
+            if (qrObserved && restartsCount < 1) {
+              const remainingMs = Math.max(1000, this.timeoutMs - (Date.now() - startTime));
+
+              // 1. Esperar barrera de persistence
+              if (this.connection.waitForAuthPersistence) {
+                try {
+                  await this.connection.waitForAuthPersistence({ timeoutMs: remainingMs });
+                } catch (err: unknown) {
+                  const isTimeout = err instanceof Error && err.message === 'WHATSAPP_AUTH_PERSISTENCE_TIMEOUT';
+                  if (isTimeout) {
+                    this.logger.error('WHATSAPP_LINK_FAILED=AUTH_PERSISTENCE_TIMEOUT');
+                  } else {
+                    this.logger.error('WHATSAPP_LINK_FAILED=AUTH_PERSISTENCE');
+                  }
+                  try {
+                    await this.connection.close();
+                  } catch {
+                    // Safe disposal
+                  }
+                  return { status: 'ERROR' };
+                }
+              }
+
+              // 2. Disponer socket viejo (DEBE completar sin error)
+              try {
+                await this.connection.close();
+              } catch (err: unknown) {
+                const isPersistence = err instanceof Error && err.message === 'WHATSAPP_AUTH_PERSISTENCE_FAILED';
+                if (isPersistence) {
+                  this.logger.error('WHATSAPP_LINK_FAILED=AUTH_PERSISTENCE');
+                } else {
+                  this.logger.error('WHATSAPP_LINK_FAILED=ERROR');
+                }
+                return { status: 'ERROR' };
+              }
+
+              restartsCount++;
+
+              // 3. Start nuevo (solamente tras close exitoso)
+              try {
+                await this.connection.start();
+              } catch {
+                this.logger.error('WHATSAPP_LINK_FAILED=ERROR');
+                return { status: 'ERROR' };
+              }
+
+              continue;
+            } else if (restartsCount >= 1) {
+              this.logger.error('WHATSAPP_LINK_FAILED=RESTART_LIMIT_EXCEEDED');
+              try {
+                await this.connection.close();
+              } catch {
+                // Safe disposal
+              }
+              return { status: 'ERROR' };
+            }
+          }
         }
 
         if (Date.now() - startTime >= this.timeoutMs) {
