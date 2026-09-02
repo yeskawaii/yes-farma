@@ -105,6 +105,24 @@ enum ToothAssessmentType {
   HEALTHY
 }
 
+enum NotificationChannel {
+  WHATSAPP
+}
+
+enum NotificationJobType {
+  APPOINTMENT_REMINDER_24H
+  DAILY_AGENDA
+}
+
+enum NotificationJobStatus {
+  PENDING
+  PROCESSING
+  RETRY_PENDING
+  SENT
+  CANCELLED
+  FAILED
+}
+
 model User {
   id           String     @id @default(uuid()) @db.Uuid
   email        String     @unique
@@ -142,6 +160,8 @@ model Clinic {
   dentalFindings         DentalFinding[]
   toothAssessments       ToothAssessment[]
   odontogramBatchRequests OdontogramBatchRequest[]
+  notificationSettings   ClinicNotificationSettings?
+  notificationJobs       NotificationJob[]
 }
 
 model Membership {
@@ -323,7 +343,9 @@ model Appointment {
   updatedBy         Membership         @relation("AppointmentUpdatedBy", fields: [updatedByMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   cancelledBy       Membership?        @relation("AppointmentCancelledBy", fields: [cancelledByMembershipId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   clinicalEncounter ClinicalEncounter?
+  notificationJobs  NotificationJob[]
 
+  @@unique([clinicId, id])
   @@index([clinicId, startAt])
   @@index([clinicId, endAt])
   @@index([clinicId, status, startAt])
@@ -563,4 +585,49 @@ model OdontogramBatchRequest {
   @@index([clinicId, patientId])
   @@index([clinicId, requestId])
   @@index([clinicId, createdByMembershipId])
+}
+
+model ClinicNotificationSettings {
+  id                            String   @id @default(uuid()) @db.Uuid
+  clinicId                      String   @unique @db.Uuid
+  whatsappEnabled               Boolean  @default(false)
+  appointmentReminder24hEnabled Boolean  @default(false)
+  dailyAgendaEnabled            Boolean  @default(false)
+  dailyAgendaLocalTime          String   @default("07:00")
+  dailyAgendaRecipientPhone     String?
+  defaultCountryCallingCode     String   @default("52")
+  createdAt                     DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt                     DateTime @updatedAt @db.Timestamptz(3)
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+}
+
+model NotificationJob {
+  id                         String                @id @default(uuid()) @db.Uuid
+  clinicId                   String                @db.Uuid
+  appointmentId              String?               @db.Uuid
+  type                       NotificationJobType
+  channel                    NotificationChannel
+  status                     NotificationJobStatus
+  scheduledFor               DateTime              @db.Timestamptz(3)
+  appointmentStartAtSnapshot DateTime?             @db.Timestamptz(3)
+  idempotencyKey             String
+  attempts                   Int                   @default(0)
+  nextAttemptAt              DateTime?             @db.Timestamptz(3)
+  processingStartedAt        DateTime?             @db.Timestamptz(3)
+  recipientPhone             String?
+  sentAt                     DateTime?             @db.Timestamptz(3)
+  providerMessageId          String?
+  failureCode                String?
+  createdAt                  DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt                  DateTime              @updatedAt @db.Timestamptz(3)
+
+  clinic      Clinic       @relation(fields: [clinicId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  appointment Appointment? @relation(fields: [clinicId, appointmentId], references: [clinicId, id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([clinicId, idempotencyKey])
+  @@index([status, scheduledFor])
+  @@index([clinicId, status, scheduledFor])
+  @@index([appointmentId])
+  @@index([clinicId, appointmentId])
 }

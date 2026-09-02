@@ -10,7 +10,6 @@ import {
 import { AuthContext } from '../../../middlewares/auth';
 import { z } from 'zod';
 import { AppError } from '../../../shared/errors/AppError';
-import { prisma } from '../../../infrastructure/database/prisma';
 
 export type AuthenticatedRequest = Request & { authContext: AuthContext };
 
@@ -18,14 +17,14 @@ const getAuthCtx = (req: Request): AuthContext => {
   return (req as AuthenticatedRequest).authContext;
 };
 
-const appointmentService = new AppointmentService(prisma as any);
-
 export class AppointmentController {
-  static async list(req: Request, res: Response, next: NextFunction) {
+  constructor(private readonly appointmentService: AppointmentService) {}
+
+  list = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const ctx = getAuthCtx(req);
       const input = listAppointmentsSchema.parse(req.query);
-      const result = await appointmentService.listAppointments(ctx.clinicId, input);
+      const result = await this.appointmentService.listAppointments(ctx.clinicId, input);
       res.json(result);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -33,23 +32,23 @@ export class AppointmentController {
       }
       next(error);
     }
-  }
+  };
 
-  static async listProfessionals(req: Request, res: Response, next: NextFunction) {
+  listProfessionals = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const ctx = getAuthCtx(req);
-      const result = await appointmentService.listProfessionals(ctx.clinicId);
+      const result = await this.appointmentService.listProfessionals(ctx.clinicId);
       res.json(result);
     } catch (error) {
       next(error);
     }
-  }
+  };
 
-  static async getById(req: Request, res: Response, next: NextFunction) {
+  getById = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const ctx = getAuthCtx(req);
       const id = z.string().uuid().parse(req.params.id);
-      const appointment = await appointmentService.getAppointmentById(ctx.clinicId, id);
+      const appointment = await this.appointmentService.getAppointmentById(ctx.clinicId, id);
       res.json(appointment);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -57,14 +56,14 @@ export class AppointmentController {
       }
       next(error);
     }
-  }
+  };
 
-  static async create(req: Request, res: Response, next: NextFunction) {
+  create = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const ctx = getAuthCtx(req);
       const input = createAppointmentSchema.parse(req.body);
 
-      const appointment = await appointmentService.createAppointment(
+      const appointment = await this.appointmentService.createAppointment(
         ctx.clinicId,
         ctx.membershipId,
         ctx.userId,
@@ -79,15 +78,15 @@ export class AppointmentController {
       }
       next(error);
     }
-  }
+  };
 
-  static async update(req: Request, res: Response, next: NextFunction) {
+  update = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const ctx = getAuthCtx(req);
       const id = z.string().uuid().parse(req.params.id);
       const input = updateAppointmentSchema.parse(req.body);
 
-      const appointment = await appointmentService.updateAppointment(
+      const appointment = await this.appointmentService.updateAppointment(
         ctx.clinicId,
         id,
         ctx.membershipId,
@@ -103,15 +102,15 @@ export class AppointmentController {
       }
       next(error);
     }
-  }
+  };
 
-  static async updateStatus(req: Request, res: Response, next: NextFunction) {
+  updateStatus = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const ctx = getAuthCtx(req);
       const id = z.string().uuid().parse(req.params.id);
       const input = updateAppointmentStatusSchema.parse(req.body);
 
-      const appointment = await appointmentService.updateAppointmentStatus(
+      const appointment = await this.appointmentService.updateAppointmentStatus(
         ctx.clinicId,
         id,
         ctx.membershipId,
@@ -127,15 +126,15 @@ export class AppointmentController {
       }
       next(error);
     }
-  }
+  };
 
-  static async cancel(req: Request, res: Response, next: NextFunction) {
+  cancel = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const ctx = getAuthCtx(req);
       const id = z.string().uuid().parse(req.params.id);
       const input = cancelAppointmentSchema.parse(req.body);
 
-      const appointment = await appointmentService.cancelAppointment(
+      const appointment = await this.appointmentService.cancelAppointment(
         ctx.clinicId,
         id,
         ctx.membershipId,
@@ -151,5 +150,5 @@ export class AppointmentController {
       }
       next(error);
     }
-  }
+  };
 }

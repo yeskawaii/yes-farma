@@ -1,6 +1,11 @@
 import type { Prisma, Appointment, AuditEvent } from '../../../generated/prisma';
 import { AppError } from '../../../shared/errors/AppError';
 import {
+  IAppointmentNotificationPort,
+  IAppointmentNotificationTx,
+  NoopAppointmentNotificationPort
+} from '../../notifications/domain/AppointmentNotificationPort';
+import {
   CreateAppointmentInput,
   ListAppointmentsInput,
   UpdateAppointmentInput,
@@ -8,7 +13,7 @@ import {
   CancelAppointmentInput
 } from '../domain/AppointmentSchema';
 
-export type IPrismaTxAppointment = {
+export type IPrismaTxAppointment = IAppointmentNotificationTx & {
   appointment: {
     create(args: Prisma.AppointmentCreateArgs): Promise<Appointment>;
     findFirst(args: Prisma.AppointmentFindFirstArgs): Promise<Appointment | null>;
@@ -37,7 +42,14 @@ export interface IAppointmentRepository {
 }
 
 export class AppointmentService {
-  constructor(private readonly prisma: IAppointmentRepository) {}
+  private readonly notificationPort: IAppointmentNotificationPort;
+
+  constructor(
+    private readonly prisma: IAppointmentRepository,
+    notificationPort?: IAppointmentNotificationPort
+  ) {
+    this.notificationPort = notificationPort ?? new NoopAppointmentNotificationPort();
+  }
 
   private normalizeString(str?: string | null): string | null {
     if (str === undefined) return undefined as any;
@@ -283,6 +295,12 @@ export class AppointmentService {
           }
         });
 
+        await this.notificationPort.scheduleAppointmentReminder(tx, {
+          clinicId,
+          appointmentId: appointment.id,
+          startAt: newStart
+        });
+
         return appointment;
       }, { isolationLevel: 'Serializable' as Prisma.TransactionIsolationLevel });
     };
@@ -302,6 +320,7 @@ export class AppointmentService {
         }
       }
     }
+    throw new AppError('APPOINTMENT_CONFLICT', 'No se pudo agendar la cita debido a alta concurrencia. Intente de nuevo.', 409);
   }
 
   async updateAppointment(clinicId: string, id: string, membershipId: string, actorUserId: string, actorRole: string, input: UpdateAppointmentInput) {
@@ -437,6 +456,17 @@ export class AppointmentService {
           }
         });
 
+        const startAtChanged = newStart.getTime() !== appointment.startAt.getTime();
+
+        if (isRescheduled) {
+          await this.notificationPort.handleAppointmentRescheduled(tx, {
+            clinicId,
+            appointmentId: id,
+            startAtChanged,
+            newStartAt: newStart
+          });
+        }
+
         return updated;
       }, { isolationLevel: 'Serializable' as Prisma.TransactionIsolationLevel });
     };
@@ -456,6 +486,7 @@ export class AppointmentService {
         }
       }
     }
+    throw new AppError('APPOINTMENT_CONFLICT', 'No se pudo reprogramar la cita debido a alta concurrencia. Intente de nuevo.', 409);
   }
 
   async updateAppointmentStatus(clinicId: string, id: string, membershipId: string, actorUserId: string, actorRole: string, input: UpdateAppointmentStatusInput) {
@@ -579,6 +610,11 @@ export class AppointmentService {
             cancelledAt: updated.cancelledAt?.toISOString()
           }
         }
+      });
+
+      await this.notificationPort.cancelAppointmentReminders(tx, {
+        clinicId,
+        appointmentId: id
       });
 
       return updated;
