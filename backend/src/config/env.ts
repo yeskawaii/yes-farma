@@ -1,3 +1,5 @@
+import * as path from 'node:path';
+import * as os from 'node:os';
 import { z } from 'zod';
 
 import { trustProxySchema } from './trustProxy';
@@ -42,6 +44,7 @@ const envSchema = z.object({
   R2_BUCKET_NAME: z.string().min(1).optional(),
   R2_UPLOAD_URL_TTL_SECONDS: z.string().transform(Number).default('600'),
   R2_DOWNLOAD_URL_TTL_SECONDS: z.string().transform(Number).default('300'),
+  WHATSAPP_AUTH_DIR: z.string().min(1).optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -98,4 +101,15 @@ export const getR2Config = (): R2Config => {
     uploadUrlTtlSeconds: env.R2_UPLOAD_URL_TTL_SECONDS,
     downloadUrlTtlSeconds: env.R2_DOWNLOAD_URL_TTL_SECONDS,
   };
+};
+
+export const getWhatsAppAuthDir = (): string => {
+  if (env.NODE_ENV === 'production') {
+    if (!env.WHATSAPP_AUTH_DIR || env.WHATSAPP_AUTH_DIR.trim() === '') {
+      throw new Error('WHATSAPP_AUTH_DIR is required in production.');
+    }
+    return env.WHATSAPP_AUTH_DIR;
+  }
+
+  return env.WHATSAPP_AUTH_DIR || path.join(os.homedir(), '.yeskira', 'whatsapp-auth');
 };

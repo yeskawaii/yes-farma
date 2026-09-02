@@ -8,3 +8,5 @@ coverage/
 *.log
 
 /src/generated/prisma
+whatsapp-auth/
+.yeskira/

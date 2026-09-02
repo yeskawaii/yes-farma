@@ -21,9 +21,13 @@ services:
     restart: unless-stopped
     env_file:
       - ./backend/.env
+    environment:
+      WHATSAPP_AUTH_DIR: /app/data/whatsapp-auth
     depends_on:
       db:
         condition: service_healthy
+    volumes:
+      - whatsapp_auth_data:/app/data/whatsapp-auth
     networks:
       - app-network
 
@@ -37,6 +41,7 @@ services:
 
 volumes:
   pgdata:
+  whatsapp_auth_data:
 
 networks:
   app-network:

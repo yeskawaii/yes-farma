@@ -4,4 +4,6 @@ node_modules/
 .env.*
 !.env.example
 docker-compose.override.yml
+whatsapp-auth/
+.yeskira/
 
