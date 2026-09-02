@@ -7,11 +7,30 @@ import { IWhatsAppConnection } from './IWhatsAppConnection';
 import { BaileysDeliveryErrorClassifier } from './BaileysDeliveryErrorClassifier';
 import { BaileysFailureCodes } from './BaileysTypes';
 
+export interface BaileysNotificationDeliveryAdapterOptions {
+  errorClassifier?: BaileysDeliveryErrorClassifier | undefined;
+  onSendAttempt?: (() => void) | undefined;
+}
+
 export class BaileysNotificationDeliveryAdapter implements INotificationDeliveryPort {
+  private readonly errorClassifier: BaileysDeliveryErrorClassifier;
+  private readonly onSendAttempt?: (() => void) | undefined;
+
   constructor(
     private readonly connection: IWhatsAppConnection,
-    private readonly errorClassifier: BaileysDeliveryErrorClassifier = new BaileysDeliveryErrorClassifier()
-  ) {}
+    errorClassifierOrOptions?: BaileysDeliveryErrorClassifier | BaileysNotificationDeliveryAdapterOptions
+  ) {
+    if (errorClassifierOrOptions && 'onSendAttempt' in errorClassifierOrOptions) {
+      this.errorClassifier = errorClassifierOrOptions.errorClassifier ?? new BaileysDeliveryErrorClassifier();
+      this.onSendAttempt = errorClassifierOrOptions.onSendAttempt;
+    } else if (errorClassifierOrOptions instanceof BaileysDeliveryErrorClassifier) {
+      this.errorClassifier = errorClassifierOrOptions;
+      this.onSendAttempt = undefined;
+    } else {
+      this.errorClassifier = new BaileysDeliveryErrorClassifier();
+      this.onSendAttempt = undefined;
+    }
+  }
 
   async deliver(params: NotificationDeliveryParams): Promise<NotificationDeliveryResult> {
     if (params.channel !== 'WHATSAPP') {
@@ -43,6 +62,7 @@ export class BaileysNotificationDeliveryAdapter implements INotificationDelivery
     const jid = `${digitsOnly}@s.whatsapp.net`;
 
     try {
+      this.onSendAttempt?.();
       const result = await sender.sendMessage(jid, { text: params.body });
       const providerMessageId = result?.key?.id;
 

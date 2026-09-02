@@ -13,7 +13,9 @@
     "whatsapp:link": "node dist/scripts/whatsapp-link.js",
     "whatsapp:probe": "node dist/scripts/whatsapp-probe.js",
     "whatsapp:link:dev": "tsx src/scripts/whatsapp-link.ts",
-    "whatsapp:probe:dev": "tsx src/scripts/whatsapp-probe.ts"
+    "whatsapp:probe:dev": "tsx src/scripts/whatsapp-probe.ts",
+    "whatsapp:test-send": "node dist/scripts/whatsapp-test-send.js",
+    "whatsapp:test-send:dev": "tsx src/scripts/whatsapp-test-send.ts"
   },
   "keywords": [],
   "author": "",
