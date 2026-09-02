@@ -425,6 +425,7 @@ test('Baileys Delivery Adapter & Connection Lifecycle - Phase C1', async (t) => 
 
     await manager.start();
     factory.lastCreatedSocket?.emit('creds.update', { me: { id: '5210000000000' } });
+    await manager.close();
 
     assert.strictEqual(authStore.saveCredsCallCount, 1);
   });

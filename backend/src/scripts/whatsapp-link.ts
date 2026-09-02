@@ -54,15 +54,15 @@ const main = async () => {
   const result = await runner.run();
 
   if (result.status === 'LINKED') {
-    process.exit(0);
+    process.exitCode = 0;
   } else {
-    process.exit(1);
+    process.exitCode = 1;
   }
 };
 
 if (process.env.NODE_ENV !== 'test') {
   main().catch((err) => {
     console.error('Fatal error during WhatsApp linkage:', err instanceof Error ? err.message : err);
-    process.exit(1);
+    process.exitCode = 1;
   });
 }

@@ -10,6 +10,8 @@ import { IQrRenderer } from './infrastructure/baileys/IQrRenderer';
 import { resolveOperatorAuthDir } from './infrastructure/baileys/resolveOperatorAuthDir';
 import { WhatsAppLinkRunner } from './infrastructure/baileys/WhatsAppLinkRunner';
 import { WhatsAppProbeRunner } from './infrastructure/baileys/WhatsAppProbeRunner';
+import { BaileysConnectionManager } from './infrastructure/baileys/BaileysConnectionManager';
+import { IWhatsAppAuthStateStore } from './infrastructure/baileys/IWhatsAppAuthStateStore';
 import {
   IBaileysSocketFactory,
   IBaileysSocketInstance,
@@ -17,6 +19,15 @@ import {
   BaileysSendResult
 } from './infrastructure/baileys/BaileysTypes';
 import { IWhatsAppConnection } from './infrastructure/baileys/IWhatsAppConnection';
+
+class FakeAuthStateStore implements IWhatsAppAuthStateStore {
+  async getAuthState() {
+    return {
+      state: { creds: {}, keys: {} } as any,
+      saveCreds: async () => {}
+    };
+  }
+}
 
 class FakeTestSocketInstance implements IBaileysSocketInstance {
   public eventListeners: Map<string, ((...args: any[]) => void)[]> = new Map();
@@ -714,5 +725,942 @@ test('WhatsApp Runtime Factory, Persistence & Operator Commands - Phase C2', asy
 
     assert.strictEqual(backendSection?.includes('whatsapp_auth_data:/app/data/whatsapp-auth'), true);
     assert.strictEqual(frontendSection?.includes('whatsapp_auth_data'), false);
+  });
+
+  // ==========================================
+  // PHASE C2b TESTS (53 - 63)
+  // ==========================================
+
+  await t.test('53. close espera saveCreds pendiente', async () => {
+    let saveCredsFinished = false;
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            await new Promise((r) => setTimeout(r, 40));
+            saveCredsFinished = true;
+          }
+        };
+      }
+    };
+
+    const factory = new FakeTestSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+
+    await manager.start();
+    factory.lastCreatedSocket?.emit('creds.update', {});
+    assert.strictEqual(saveCredsFinished, false);
+
+    await manager.close();
+    assert.strictEqual(saveCredsFinished, true);
+  });
+
+  await t.test('54. linkage no retorna LINKED antes de terminar saveCreds', async () => {
+    let saveCredsFinished = false;
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            await new Promise((r) => setTimeout(r, 40));
+            saveCredsFinished = true;
+          }
+        };
+      }
+    };
+
+    const factory = new FakeTestSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    const renderer = new FakeQrRenderer();
+    const runner = new WhatsAppLinkRunner({
+      connection: manager,
+      qrRenderer: renderer,
+      timeoutMs: 500,
+      pollIntervalMs: 10
+    });
+
+    const runPromise = runner.run();
+    await new Promise((r) => setTimeout(r, 10));
+
+    factory.lastCreatedSocket?.emit('creds.update', {});
+    factory.lastCreatedSocket?.emit('connection.update', { connection: 'open' });
+
+    const result = await runPromise;
+    assert.strictEqual(result.status, 'LINKED');
+    assert.strictEqual(saveCredsFinished, true);
+  });
+
+  await t.test('55. saveCreds failure impide LINKED', async () => {
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            throw new Error('Disk write failed');
+          }
+        };
+      }
+    };
+
+    const factory = new FakeTestSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    const renderer = new FakeQrRenderer();
+    const runner = new WhatsAppLinkRunner({
+      connection: manager,
+      qrRenderer: renderer,
+      timeoutMs: 500,
+      pollIntervalMs: 10
+    });
+
+    const runPromise = runner.run();
+    await new Promise((r) => setTimeout(r, 10));
+
+    factory.lastCreatedSocket?.emit('creds.update', {});
+    factory.lastCreatedSocket?.emit('connection.update', { connection: 'open' });
+
+    const result = await runPromise;
+    assert.strictEqual(result.status, 'ERROR');
+  });
+
+  await t.test('56. saveCreds failure produce resultado ERROR controlado', async () => {
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            throw new Error('EACCES: permission denied');
+          }
+        };
+      }
+    };
+
+    const factory = new FakeTestSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    const renderer = new FakeQrRenderer();
+    const loggedErrors: string[] = [];
+    const runner = new WhatsAppLinkRunner({
+      connection: manager,
+      qrRenderer: renderer,
+      logger: {
+        info: () => {},
+        error: (msg) => loggedErrors.push(msg)
+      },
+      timeoutMs: 500,
+      pollIntervalMs: 10
+    });
+
+    const runPromise = runner.run();
+    await new Promise((r) => setTimeout(r, 10));
+
+    factory.lastCreatedSocket?.emit('creds.update', {});
+    factory.lastCreatedSocket?.emit('connection.update', { connection: 'open' });
+
+    const result = await runPromise;
+    assert.strictEqual(result.status, 'ERROR');
+    assert.ok(loggedErrors.includes('WHATSAPP_LINK_FAILED=AUTH_PERSISTENCE'));
+  });
+
+  await t.test('57. dos creds.update se serializan', async () => {
+    let activeSaves = 0;
+    let maxConcurrentSaves = 0;
+    let saveCount = 0;
+
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            activeSaves++;
+            maxConcurrentSaves = Math.max(maxConcurrentSaves, activeSaves);
+            await new Promise((r) => setTimeout(r, 30));
+            activeSaves--;
+            saveCount++;
+          }
+        };
+      }
+    };
+
+    const factory = new FakeTestSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+
+    await manager.start();
+    // Fire two creds.update immediately
+    factory.lastCreatedSocket?.emit('creds.update', { me: { id: '1' } });
+    factory.lastCreatedSocket?.emit('creds.update', { me: { id: '2' } });
+
+    await manager.close();
+    assert.strictEqual(saveCount, 2);
+    assert.strictEqual(maxConcurrentSaves, 1);
+  });
+
+  await t.test('58. close continúa siendo idempotente', async () => {
+    const authStore = new FakeAuthStateStore();
+    const factory = new FakeTestSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+
+    await manager.start();
+    await manager.close();
+    await manager.close();
+    await manager.close();
+
+    assert.strictEqual(manager.getState(), 'DISCONNECTED');
+  });
+
+  await t.test('59. whatsapp-link.ts no usa process.exit(...) para salida normal', () => {
+    const filePath = path.join(__dirname, '..', '..', 'scripts', 'whatsapp-link.ts');
+    const content = fs.readFileSync(filePath, 'utf8');
+    assert.strictEqual(content.includes('process.exit('), false);
+    assert.strictEqual(content.includes('process.exitCode = 0'), true);
+    assert.strictEqual(content.includes('process.exitCode = 1'), true);
+  });
+
+  await t.test('60. whatsapp-probe.ts no usa process.exit(...) para salida normal', () => {
+    const filePath = path.join(__dirname, '..', '..', 'scripts', 'whatsapp-probe.ts');
+    const content = fs.readFileSync(filePath, 'utf8');
+    assert.strictEqual(content.includes('process.exit('), false);
+    assert.strictEqual(content.includes('process.exitCode = 0'), true);
+    assert.strictEqual(content.includes('process.exitCode = 1'), true);
+  });
+
+  await t.test('61. ningún test abre socket real', () => {
+    const factory = new FakeTestSocketFactory();
+    assert.strictEqual(factory.createCount, 0);
+  });
+
+  await t.test('62. ningún test genera QR real', () => {
+    const renderer = new FakeQrRenderer();
+    assert.strictEqual(renderer.renderedQrs.length, 0);
+  });
+
+  await t.test('63. ningún test envía mensajes', () => {
+    const conn = new FakeTestConnection();
+    assert.strictEqual(conn.sentMessages.length, 0);
+  });
+
+  // ==========================================
+  // PHASE C2b PART 2 TESTS (64 - 77)
+  // ==========================================
+
+  await t.test('64. open antes de creds.update no produce LINKED', async () => {
+    let saveCredsFinished = false;
+    let linkResolved = false;
+
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            saveCredsFinished = true;
+          }
+        };
+      }
+    };
+
+    const factory = new FakeTestSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    const renderer = new FakeQrRenderer();
+    const runner = new WhatsAppLinkRunner({
+      connection: manager,
+      qrRenderer: renderer,
+      timeoutMs: 500,
+      pollIntervalMs: 10
+    });
+
+    const runPromise = runner.run().then((res) => {
+      linkResolved = true;
+      return res;
+    });
+
+    await new Promise((r) => setTimeout(r, 10));
+    factory.lastCreatedSocket?.emit('connection.update', { qr: '1@qr-for-test-64' });
+    factory.lastCreatedSocket?.emit('connection.update', { connection: 'open' });
+
+    await new Promise((r) => setTimeout(r, 30));
+    assert.strictEqual(linkResolved, false);
+    assert.strictEqual(saveCredsFinished, false);
+
+    // Emit creds.update to let it complete
+    factory.lastCreatedSocket?.emit('creds.update', {});
+    const result = await runPromise;
+    assert.strictEqual(result.status, 'LINKED');
+    assert.strictEqual(saveCredsFinished, true);
+  });
+
+  await t.test('65. open -> creds.update -> save pendiente no produce LINKED', async () => {
+    let saveCredsFinished = false;
+    let linkResolved = false;
+
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            await new Promise((r) => setTimeout(r, 60));
+            saveCredsFinished = true;
+          }
+        };
+      }
+    };
+
+    const factory = new FakeTestSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    const renderer = new FakeQrRenderer();
+    const runner = new WhatsAppLinkRunner({
+      connection: manager,
+      qrRenderer: renderer,
+      timeoutMs: 500,
+      pollIntervalMs: 10
+    });
+
+    const runPromise = runner.run().then((res) => {
+      linkResolved = true;
+      return res;
+    });
+
+    await new Promise((r) => setTimeout(r, 10));
+    factory.lastCreatedSocket?.emit('connection.update', { qr: '1@qr-for-test-65' });
+    factory.lastCreatedSocket?.emit('connection.update', { connection: 'open' });
+    factory.lastCreatedSocket?.emit('creds.update', {});
+
+    // While save is sleeping (at 20ms of 60ms)
+    await new Promise((r) => setTimeout(r, 20));
+    assert.strictEqual(linkResolved, false);
+    assert.strictEqual(saveCredsFinished, false);
+
+    const result = await runPromise;
+    assert.strictEqual(linkResolved, true);
+    assert.strictEqual(result.status, 'LINKED');
+    assert.strictEqual(saveCredsFinished, true);
+  });
+
+  await t.test('66. open -> creds.update -> save completo permite LINKED', async () => {
+    let saveCredsFinished = false;
+
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            saveCredsFinished = true;
+          }
+        };
+      }
+    };
+
+    const factory = new FakeTestSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    const renderer = new FakeQrRenderer();
+    const runner = new WhatsAppLinkRunner({
+      connection: manager,
+      qrRenderer: renderer,
+      timeoutMs: 500,
+      pollIntervalMs: 10
+    });
+
+    const runPromise = runner.run();
+    await new Promise((r) => setTimeout(r, 10));
+    factory.lastCreatedSocket?.emit('connection.update', { qr: '1@qr-for-test-66' });
+    factory.lastCreatedSocket?.emit('connection.update', { connection: 'open' });
+    factory.lastCreatedSocket?.emit('creds.update', {});
+
+    const result = await runPromise;
+    assert.strictEqual(result.status, 'LINKED');
+    assert.strictEqual(saveCredsFinished, true);
+  });
+
+  await t.test('67. QR linkage conectado pero nunca llega creds.update -> ERROR por persistence timeout', async () => {
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {}
+        };
+      }
+    };
+
+    const factory = new FakeTestSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    const renderer = new FakeQrRenderer();
+    const loggedErrors: string[] = [];
+    const runner = new WhatsAppLinkRunner({
+      connection: manager,
+      qrRenderer: renderer,
+      logger: {
+        info: () => {},
+        error: (msg) => loggedErrors.push(msg)
+      },
+      timeoutMs: 80,
+      pollIntervalMs: 10
+    });
+
+    const runPromise = runner.run();
+    await new Promise((r) => setTimeout(r, 10));
+    factory.lastCreatedSocket?.emit('connection.update', { qr: '1@qr-for-test-67' });
+    factory.lastCreatedSocket?.emit('connection.update', { connection: 'open' });
+    // NEVER emit creds.update
+
+    const result = await runPromise;
+    assert.strictEqual(result.status, 'ERROR');
+    assert.ok(loggedErrors.includes('WHATSAPP_LINK_FAILED=AUTH_PERSISTENCE_TIMEOUT'));
+  });
+
+  await t.test('68. QR linkage saveCreds falla -> ERROR, nunca LINKED', async () => {
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            throw new Error('Disk write error');
+          }
+        };
+      }
+    };
+
+    const factory = new FakeTestSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    const renderer = new FakeQrRenderer();
+    const runner = new WhatsAppLinkRunner({
+      connection: manager,
+      qrRenderer: renderer,
+      timeoutMs: 500,
+      pollIntervalMs: 10
+    });
+
+    const runPromise = runner.run();
+    await new Promise((r) => setTimeout(r, 10));
+    factory.lastCreatedSocket?.emit('connection.update', { qr: '1@qr-for-test-68' });
+    factory.lastCreatedSocket?.emit('connection.update', { connection: 'open' });
+    factory.lastCreatedSocket?.emit('creds.update', {});
+
+    const result = await runPromise;
+    assert.strictEqual(result.status, 'ERROR');
+  });
+
+  await t.test('69. error público de persistence es exactamente WHATSAPP_AUTH_PERSISTENCE_FAILED', async () => {
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            throw new Error('EACCES: permission denied, open /secret/path/creds.json');
+          }
+        };
+      }
+    };
+
+    const factory = new FakeTestSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+
+    await manager.start();
+    factory.lastCreatedSocket?.emit('creds.update', {});
+
+    await assert.rejects(
+      async () => {
+        await manager.close();
+      },
+      (err: Error) => {
+        return err.message === 'WHATSAPP_AUTH_PERSISTENCE_FAILED';
+      }
+    );
+  });
+
+  await t.test('70. error público no contiene mensaje original del filesystem', async () => {
+    const rawSecretMessage = 'ENOENT: cannot find /tmp/secret-creds/keys.json';
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            throw new Error(rawSecretMessage);
+          }
+        };
+      }
+    };
+
+    const factory = new FakeTestSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+
+    await manager.start();
+    factory.lastCreatedSocket?.emit('creds.update', {});
+
+    await assert.rejects(
+      async () => {
+        await manager.close();
+      },
+      (err: Error) => {
+        assert.strictEqual(err.message.includes('ENOENT'), false);
+        assert.strictEqual(err.message.includes('secret-creds'), false);
+        assert.strictEqual(err.message, 'WHATSAPP_AUTH_PERSISTENCE_FAILED');
+        return true;
+      }
+    );
+  });
+
+  await t.test('71. conexión existente sin QR no exige una nueva creds.update para probe', async () => {
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: { me: { id: '5210000000000' } }, keys: {} } as any,
+          saveCreds: async () => {}
+        };
+      }
+    };
+
+    const factory = new FakeTestSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    const runner = new WhatsAppProbeRunner({
+      connection: manager,
+      timeoutMs: 500,
+      pollIntervalMs: 10
+    });
+
+    const runPromise = runner.run();
+    await new Promise((r) => setTimeout(r, 10));
+    // Notice NO QR emitted: it is an existing session
+    factory.lastCreatedSocket?.emit('connection.update', { connection: 'open' });
+
+    const result = await runPromise;
+    assert.strictEqual(result.status, 'PASS');
+  });
+
+  await t.test('72. persistenceChain sigue recuperable después de una escritura fallida', async () => {
+    let attempt = 0;
+    let saveCount = 0;
+
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            attempt++;
+            if (attempt === 1) {
+              throw new Error('First save failed');
+            }
+            saveCount++;
+          }
+        };
+      }
+    };
+
+    const factory = new FakeTestSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+
+    await manager.start();
+    factory.lastCreatedSocket?.emit('creds.update', { me: { id: '1' } });
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Save #2
+    factory.lastCreatedSocket?.emit('creds.update', { me: { id: '2' } });
+    await assert.rejects(
+      async () => {
+        await manager.close();
+      },
+      /WHATSAPP_AUTH_PERSISTENCE_FAILED/
+    );
+
+    assert.strictEqual(saveCount, 1);
+    assert.strictEqual(manager.getState(), 'DISCONNECTED');
+  });
+
+  await t.test('73. dos saves siguen siendo seriales', async () => {
+    let activeSaves = 0;
+    let maxConcurrent = 0;
+    let totalSaves = 0;
+
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            activeSaves++;
+            maxConcurrent = Math.max(maxConcurrent, activeSaves);
+            await new Promise((r) => setTimeout(r, 30));
+            activeSaves--;
+            totalSaves++;
+          }
+        };
+      }
+    };
+
+    const factory = new FakeTestSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+
+    await manager.start();
+    factory.lastCreatedSocket?.emit('creds.update', {});
+    factory.lastCreatedSocket?.emit('creds.update', {});
+
+    await manager.close();
+    assert.strictEqual(totalSaves, 2);
+    assert.strictEqual(maxConcurrent, 1);
+  });
+
+  await t.test('74. close sigue esperando saves ya encolados', async () => {
+    let finished = false;
+
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            await new Promise((r) => setTimeout(r, 40));
+            finished = true;
+          }
+        };
+      }
+    };
+
+    const factory = new FakeTestSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+
+    await manager.start();
+    factory.lastCreatedSocket?.emit('creds.update', {});
+    assert.strictEqual(finished, false);
+
+    await manager.close();
+    assert.strictEqual(finished, true);
+  });
+
+  await t.test('75. ningún test abre socket real', () => {
+    const factory = new FakeTestSocketFactory();
+    assert.strictEqual(factory.createCount, 0);
+  });
+
+  await t.test('76. ningún test genera QR real', () => {
+    const renderer = new FakeQrRenderer();
+    assert.strictEqual(renderer.renderedQrs.length, 0);
+  });
+
+  await t.test('77. ningún test envía mensajes', () => {
+    const conn = new FakeTestConnection();
+    assert.strictEqual(conn.sentMessages.length, 0);
+  });
+
+  // ==========================================
+  // PHASE C2b STICKY FAILURE TESTS (78 - 89)
+  // ==========================================
+
+  await t.test('78. fallo save #1 + éxito save #2 sigue invalidando linkage actual', async () => {
+    let attempt = 0;
+    let secondSaveExecuted = false;
+
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            attempt++;
+            if (attempt === 1) {
+              throw new Error('First disk write failed');
+            }
+            secondSaveExecuted = true;
+          }
+        };
+      }
+    };
+
+    const factory = new FakeTestSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    const renderer = new FakeQrRenderer();
+    const loggedErrors: string[] = [];
+    const runner = new WhatsAppLinkRunner({
+      connection: manager,
+      qrRenderer: renderer,
+      logger: {
+        info: () => {},
+        error: (msg) => loggedErrors.push(msg)
+      },
+      timeoutMs: 500,
+      pollIntervalMs: 10
+    });
+
+    const runPromise = runner.run();
+    await new Promise((r) => setTimeout(r, 10));
+
+    factory.lastCreatedSocket?.emit('connection.update', { qr: '1@qr-for-test-78' });
+    factory.lastCreatedSocket?.emit('connection.update', { connection: 'open' });
+    factory.lastCreatedSocket?.emit('creds.update', {});
+    await new Promise((r) => setTimeout(r, 20));
+    factory.lastCreatedSocket?.emit('creds.update', {});
+
+    const result = await runPromise;
+    assert.strictEqual(result.status, 'ERROR');
+    assert.strictEqual(secondSaveExecuted, true);
+    assert.ok(loggedErrors.includes('WHATSAPP_LINK_FAILED=AUTH_PERSISTENCE'));
+  });
+
+  await t.test('79. successful save posterior no limpia persistenceFailureSinceStart', async () => {
+    let attempt = 0;
+
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            attempt++;
+            if (attempt === 1) {
+              throw new Error('Save 1 failed');
+            }
+          }
+        };
+      }
+    };
+
+    const factory = new FakeTestSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+
+    await manager.start();
+    factory.lastCreatedSocket?.emit('connection.update', { qr: '1@qr-for-test-79' });
+    factory.lastCreatedSocket?.emit('creds.update', {});
+    await new Promise((r) => setTimeout(r, 20));
+    factory.lastCreatedSocket?.emit('creds.update', {});
+    await new Promise((r) => setTimeout(r, 20));
+
+    await assert.rejects(
+      async () => {
+        await manager.waitForAuthPersistence({ timeoutMs: 100 });
+      },
+      /WHATSAPP_AUTH_PERSISTENCE_FAILED/
+    );
+  });
+
+  await t.test('80. nuevo start resetea persistenceFailureSinceStart', async () => {
+    let attempt = 0;
+
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            attempt++;
+            if (attempt === 1) {
+              throw new Error('Attempt 1 failed');
+            }
+          }
+        };
+      }
+    };
+
+    const factory = new FakeTestSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+
+    // Session 1: fails
+    await manager.start();
+    factory.lastCreatedSocket?.emit('connection.update', { qr: '1@qr-session-1' });
+    factory.lastCreatedSocket?.emit('creds.update', {});
+    await new Promise((r) => setTimeout(r, 20));
+    try {
+      await manager.close();
+    } catch {
+      // Expected failure
+    }
+
+    // Session 2: new start resets sticky flag
+    await manager.start();
+    factory.lastCreatedSocket?.emit('connection.update', { qr: '1@qr-session-2' });
+    factory.lastCreatedSocket?.emit('creds.update', {});
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Must resolve successfully now
+    await manager.waitForAuthPersistence({ timeoutMs: 200 });
+    await manager.close();
+    assert.strictEqual(manager.getState(), 'DISCONNECTED');
+  });
+
+  await t.test('81. cadena puede ejecutar save posterior después de fallo', async () => {
+    let count = 0;
+
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            count++;
+            if (count === 1) {
+              throw new Error('First save failed');
+            }
+          }
+        };
+      }
+    };
+
+    const factory = new FakeTestSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+
+    await manager.start();
+    factory.lastCreatedSocket?.emit('creds.update', {});
+    await new Promise((r) => setTimeout(r, 20));
+    factory.lastCreatedSocket?.emit('creds.update', {});
+    await new Promise((r) => setTimeout(r, 20));
+
+    assert.strictEqual(count, 2);
+  });
+
+  await t.test('82. waitForAuthPersistence falla sticky aunque haya éxito posterior', async () => {
+    let count = 0;
+
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            count++;
+            if (count === 1) {
+              throw new Error('Flaky write');
+            }
+          }
+        };
+      }
+    };
+
+    const factory = new FakeTestSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+
+    await manager.start();
+    factory.lastCreatedSocket?.emit('connection.update', { qr: '1@qr-82' });
+    factory.lastCreatedSocket?.emit('creds.update', {});
+    await new Promise((r) => setTimeout(r, 20));
+    factory.lastCreatedSocket?.emit('creds.update', {});
+    await new Promise((r) => setTimeout(r, 20));
+
+    await assert.rejects(
+      async () => {
+        await manager.waitForAuthPersistence({ timeoutMs: 100 });
+      },
+      (err: Error) => err.message === 'WHATSAPP_AUTH_PERSISTENCE_FAILED'
+    );
+  });
+
+  await t.test('83. close reporta WHATSAPP_AUTH_PERSISTENCE_FAILED tras fallo+éxito', async () => {
+    let count = 0;
+
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            count++;
+            if (count === 1) {
+              throw new Error('Storage write failed');
+            }
+          }
+        };
+      }
+    };
+
+    const factory = new FakeTestSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+
+    await manager.start();
+    factory.lastCreatedSocket?.emit('creds.update', {});
+    await new Promise((r) => setTimeout(r, 20));
+    factory.lastCreatedSocket?.emit('creds.update', {});
+    await new Promise((r) => setTimeout(r, 20));
+
+    await assert.rejects(
+      async () => {
+        await manager.close();
+      },
+      (err: Error) => err.message === 'WHATSAPP_AUTH_PERSISTENCE_FAILED'
+    );
+  });
+
+  await t.test('84. error público sigue sanitizado', async () => {
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            throw new Error('FATAL: /var/secrets/app-auth/creds.json disk corrupted');
+          }
+        };
+      }
+    };
+
+    const factory = new FakeTestSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+
+    await manager.start();
+    factory.lastCreatedSocket?.emit('creds.update', {});
+    await new Promise((r) => setTimeout(r, 20));
+
+    await assert.rejects(
+      async () => {
+        await manager.close();
+      },
+      (err: Error) => {
+        assert.strictEqual(err.message, 'WHATSAPP_AUTH_PERSISTENCE_FAILED');
+        return true;
+      }
+    );
+  });
+
+  await t.test('85. timeout continúa limpiándose tras resolve', async () => {
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {}
+        };
+      }
+    };
+
+    const factory = new FakeTestSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+
+    await manager.start();
+    factory.lastCreatedSocket?.emit('connection.update', { qr: '1@qr-85' });
+
+    const waitPromise = manager.waitForAuthPersistence({ timeoutMs: 5000 });
+    factory.lastCreatedSocket?.emit('creds.update', {});
+    await waitPromise;
+    await manager.close();
+  });
+
+  await t.test('86. timeout continúa limpiándose tras reject', async () => {
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            throw new Error('Immediate write failure');
+          }
+        };
+      }
+    };
+
+    const factory = new FakeTestSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+
+    await manager.start();
+    factory.lastCreatedSocket?.emit('connection.update', { qr: '1@qr-86' });
+
+    const waitPromise = manager.waitForAuthPersistence({ timeoutMs: 5000 });
+    factory.lastCreatedSocket?.emit('creds.update', {});
+
+    await assert.rejects(
+      async () => {
+        await waitPromise;
+      },
+      /WHATSAPP_AUTH_PERSISTENCE_FAILED/
+    );
+    try {
+      await manager.close();
+    } catch {}
+  });
+
+  await t.test('87. ningún socket real', () => {
+    const factory = new FakeTestSocketFactory();
+    assert.strictEqual(factory.createCount, 0);
+  });
+
+  await t.test('88. ningún QR real', () => {
+    const renderer = new FakeQrRenderer();
+    assert.strictEqual(renderer.renderedQrs.length, 0);
+  });
+
+  await t.test('89. ningún mensaje real', () => {
+    const conn = new FakeTestConnection();
+    assert.strictEqual(conn.sentMessages.length, 0);
   });
 });
