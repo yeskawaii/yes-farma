@@ -6,15 +6,19 @@ import {
 import { IWhatsAppConnection } from './IWhatsAppConnection';
 import { BaileysDeliveryErrorClassifier } from './BaileysDeliveryErrorClassifier';
 import { BaileysFailureCodes } from './BaileysTypes';
+import { IWhatsAppRecipientResolver } from './IWhatsAppRecipientResolver';
+import { BaileysRecipientResolver } from './BaileysRecipientResolver';
 
 export interface BaileysNotificationDeliveryAdapterOptions {
   errorClassifier?: BaileysDeliveryErrorClassifier | undefined;
   onSendAttempt?: (() => void) | undefined;
+  recipientResolver?: IWhatsAppRecipientResolver | undefined;
 }
 
 export class BaileysNotificationDeliveryAdapter implements INotificationDeliveryPort {
   private readonly errorClassifier: BaileysDeliveryErrorClassifier;
   private readonly onSendAttempt?: (() => void) | undefined;
+  private readonly recipientResolver: IWhatsAppRecipientResolver;
 
   constructor(
     private readonly connection: IWhatsAppConnection,
@@ -23,13 +27,30 @@ export class BaileysNotificationDeliveryAdapter implements INotificationDelivery
     if (errorClassifierOrOptions && 'onSendAttempt' in errorClassifierOrOptions) {
       this.errorClassifier = errorClassifierOrOptions.errorClassifier ?? new BaileysDeliveryErrorClassifier();
       this.onSendAttempt = errorClassifierOrOptions.onSendAttempt;
+      this.recipientResolver = errorClassifierOrOptions.recipientResolver ?? this.createDefaultResolver();
+    } else if (errorClassifierOrOptions && 'recipientResolver' in errorClassifierOrOptions) {
+      this.errorClassifier = errorClassifierOrOptions.errorClassifier ?? new BaileysDeliveryErrorClassifier();
+      this.onSendAttempt = errorClassifierOrOptions.onSendAttempt;
+      this.recipientResolver = errorClassifierOrOptions.recipientResolver ?? this.createDefaultResolver();
     } else if (errorClassifierOrOptions instanceof BaileysDeliveryErrorClassifier) {
       this.errorClassifier = errorClassifierOrOptions;
       this.onSendAttempt = undefined;
+      this.recipientResolver = this.createDefaultResolver();
     } else {
       this.errorClassifier = new BaileysDeliveryErrorClassifier();
       this.onSendAttempt = undefined;
+      this.recipientResolver = this.createDefaultResolver();
     }
+  }
+
+  private createDefaultResolver(): IWhatsAppRecipientResolver {
+    if (
+      this.connection &&
+      typeof (this.connection as any).queryRegisteredRecipient === 'function'
+    ) {
+      return new BaileysRecipientResolver(this.connection as any);
+    }
+    return new BaileysRecipientResolver();
   }
 
   async deliver(params: NotificationDeliveryParams): Promise<NotificationDeliveryResult> {
@@ -37,15 +58,6 @@ export class BaileysNotificationDeliveryAdapter implements INotificationDelivery
       return {
         status: 'PERMANENT_FAILURE',
         failureCode: BaileysFailureCodes.UNSUPPORTED_NOTIFICATION_CHANNEL
-      };
-    }
-
-    // Validate E.164 format: + followed by 8 to 15 digits
-    const e164Regex = /^\+[1-9]\d{7,14}$/;
-    if (!e164Regex.test(params.recipient)) {
-      return {
-        status: 'PERMANENT_FAILURE',
-        failureCode: BaileysFailureCodes.WHATSAPP_RECIPIENT_INVALID
       };
     }
 
@@ -57,9 +69,22 @@ export class BaileysNotificationDeliveryAdapter implements INotificationDelivery
       };
     }
 
-    // Convert E.164 to Baileys WhatsApp JID exclusively in infrastructure layer
-    const digitsOnly = params.recipient.replace(/^\+/, '');
-    const jid = `${digitsOnly}@s.whatsapp.net`;
+    const resolved = await this.recipientResolver.resolveRecipient(params.recipient);
+    if (!resolved.exists || !resolved.canonicalJid) {
+      return {
+        status: 'PERMANENT_FAILURE',
+        failureCode: BaileysFailureCodes.WHATSAPP_RECIPIENT_INVALID
+      };
+    }
+
+    if (resolved.isLid) {
+      return {
+        status: 'PERMANENT_FAILURE',
+        failureCode: BaileysFailureCodes.WHATSAPP_RECIPIENT_INVALID
+      };
+    }
+
+    const jid = resolved.canonicalJid;
 
     try {
       this.onSendAttempt?.();

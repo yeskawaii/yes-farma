@@ -1,12 +1,13 @@
 import { IWhatsAppConnection } from './IWhatsAppConnection';
 import { INotificationDeliveryPort } from '../../domain/NotificationDeliveryPort';
 import { BaileysNotificationDeliveryAdapter } from './BaileysNotificationDeliveryAdapter';
+import { IWhatsAppRecipientResolver } from './IWhatsAppRecipientResolver';
+import { BaileysRecipientResolver } from './BaileysRecipientResolver';
+import { isValidE164 } from './WhatsAppPhoneUtils';
+
+export { isValidE164 };
 
 export const FIXED_TEST_SEND_MESSAGE = 'Prueba técnica de YESKIRA Dental. No requiere respuesta.';
-
-export const isValidE164 = (phone: string): boolean => {
-  return /^\+[1-9]\d{6,14}$/.test(phone);
-};
 
 export type WhatsAppTestSendStatus =
   | 'PASS'
@@ -27,6 +28,7 @@ export interface WhatsAppTestSendResult {
 export interface WhatsAppTestSendRunnerOptions {
   connection: IWhatsAppConnection;
   deliveryPort?: INotificationDeliveryPort | undefined;
+  recipientResolver?: IWhatsAppRecipientResolver | undefined;
   to: string;
   confirm: string;
   timeoutMs?: number | undefined;
@@ -73,10 +75,18 @@ export class WhatsAppTestSendRunner {
       options.onSendAttempt?.();
     };
 
+    const defaultResolver =
+      options.recipientResolver ?? (
+        typeof (this.connection as any).queryRegisteredRecipient === 'function'
+          ? new BaileysRecipientResolver(this.connection as any)
+          : new BaileysRecipientResolver()
+      );
+
     this.deliveryPort =
       options.deliveryPort ??
       new BaileysNotificationDeliveryAdapter(this.connection, {
-        onSendAttempt: recordSendAttempt
+        onSendAttempt: recordSendAttempt,
+        recipientResolver: defaultResolver
       });
   }
 
@@ -156,6 +166,19 @@ export class WhatsAppTestSendRunner {
             status: 'FAIL',
             sendAttempted: false,
             failureCode: 'ERROR_SESSION_NOT_LINKED'
+          };
+        }
+
+        if (state === 'DEVICE_REMOVED') {
+          await cleanupOnce();
+          this.logger.error('WHATSAPP_TEST_SEND=FAIL');
+          this.logger.error('SEND_ATTEMPTED=NO');
+          this.logger.error('FAILURE_CODE=ERROR_DEVICE_REMOVED');
+          this.logger.info('AUTOMATIC_RETRY=NO');
+          return {
+            status: 'FAIL',
+            sendAttempted: false,
+            failureCode: 'ERROR_DEVICE_REMOVED'
           };
         }
 

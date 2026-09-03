@@ -19,23 +19,42 @@ export class BaileysDeliveryErrorClassifier {
       statusCode = (error as any).statusCode;
     }
 
-    // 401 is always terminal PERMANENT_FAILURE (logged out / revoked session)
-    if (statusCode === 401) {
+    const msg = error instanceof Error ? error.message.toLowerCase() : '';
+    const dataReason =
+      error &&
+      typeof error === 'object' &&
+      'data' in error &&
+      (error as any).data &&
+      typeof (error as any).data === 'object' &&
+      'reason' in (error as any).data
+        ? String((error as any).data.reason).toLowerCase()
+        : '';
+
+    const isDeviceRemoved = msg.includes('device_removed') || dataReason === 'device_removed';
+
+    // 1. Detect explicitly device_removed (priority over generic 401)
+    if (isDeviceRemoved) {
+      return {
+        status: 'PERMANENT_FAILURE',
+        failureCode: BaileysFailureCodes.WHATSAPP_DEVICE_REMOVED
+      };
+    }
+
+    // 2. Only after: generic 401 is always terminal PERMANENT_FAILURE (logged out / revoked session)
+    if (statusCode === 401 || msg.includes('logged out') || msg.includes('unauthorized')) {
       return {
         status: 'PERMANENT_FAILURE',
         failureCode: BaileysFailureCodes.WHATSAPP_LOGGED_OUT
       };
     }
 
-    // Explicit bad recipient errors are PERMANENT_FAILURE
+    // 3. Explicit bad recipient errors are PERMANENT_FAILURE
     if (statusCode === 400 || statusCode === 404) {
       return {
         status: 'PERMANENT_FAILURE',
         failureCode: BaileysFailureCodes.WHATSAPP_RECIPIENT_INVALID
       };
     }
-
-    const msg = error instanceof Error ? error.message.toLowerCase() : '';
 
     if (msg.includes('invalid jid') || msg.includes('bad recipient') || msg.includes('invalid recipient')) {
       return {
@@ -44,14 +63,7 @@ export class BaileysDeliveryErrorClassifier {
       };
     }
 
-    if (msg.includes('logged out') || msg.includes('unauthorized')) {
-      return {
-        status: 'PERMANENT_FAILURE',
-        failureCode: BaileysFailureCodes.WHATSAPP_LOGGED_OUT
-      };
-    }
-
-    // PRE_SEND: transport errors before transmission has begun can be safely retried
+    // 4. PRE_SEND: transport errors before transmission has begun can be safely retried
     if (phase === 'PRE_SEND') {
       if (
         statusCode === 428 ||
@@ -73,7 +85,7 @@ export class BaileysDeliveryErrorClassifier {
       }
     }
 
-    // SEND_STARTED: any transport failure, timeout, or unknown error after sendMessage began
+    // 5. SEND_STARTED: any transport failure, timeout, or unknown error after sendMessage began
     // is AMBIGUOUS_FAILURE to conservatively prevent duplicate messages
     return {
       status: 'AMBIGUOUS_FAILURE',

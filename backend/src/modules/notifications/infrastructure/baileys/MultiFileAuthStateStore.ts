@@ -1,4 +1,4 @@
-import { useMultiFileAuthState, AuthenticationState } from '@whiskeysockets/baileys';
+import type { AuthenticationState } from '@whiskeysockets/baileys';
 import { IWhatsAppAuthStateStore } from './IWhatsAppAuthStateStore';
 
 export class MultiFileAuthStateStore implements IWhatsAppAuthStateStore {
@@ -16,6 +16,7 @@ export class MultiFileAuthStateStore implements IWhatsAppAuthStateStore {
     state: AuthenticationState;
     saveCreds: () => Promise<void>;
   }> {
+    const { useMultiFileAuthState } = await import('@whiskeysockets/baileys');
     return useMultiFileAuthState(this.authDir);
   }
 }

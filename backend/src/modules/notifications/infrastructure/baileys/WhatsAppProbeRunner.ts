@@ -1,6 +1,6 @@
 import { IWhatsAppConnection } from './IWhatsAppConnection';
 
-export type WhatsAppProbeStatus = 'PASS' | 'LOGGED_OUT' | 'FAIL' | 'TIMEOUT' | 'ABORTED';
+export type WhatsAppProbeStatus = 'PASS' | 'LOGGED_OUT' | 'DEVICE_REMOVED' | 'FAIL' | 'TIMEOUT' | 'ABORTED';
 
 export interface WhatsAppProbeResult {
   status: WhatsAppProbeStatus;
@@ -71,6 +71,12 @@ export class WhatsAppProbeRunner {
           this.logger.info('WHATSAPP_CONNECTION_PROBE=PASS');
           await this.connection.close();
           return { status: 'PASS' };
+        }
+
+        if (state === 'DEVICE_REMOVED') {
+          this.logger.error('WHATSAPP_CONNECTION_PROBE=DEVICE_REMOVED');
+          await this.connection.close();
+          return { status: 'DEVICE_REMOVED' };
         }
 
         if (state === 'LOGGED_OUT') {

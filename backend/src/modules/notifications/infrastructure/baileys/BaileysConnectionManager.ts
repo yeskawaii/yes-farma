@@ -1,9 +1,11 @@
-import { DisconnectReason, ConnectionState, AuthenticationCreds } from '@whiskeysockets/baileys';
+import type { ConnectionState, AuthenticationCreds } from '@whiskeysockets/baileys';
 import { isBoom } from '@hapi/boom';
 import { IWhatsAppConnection, WaitForAuthPersistenceOptions } from './IWhatsAppConnection';
 import { IWhatsAppAuthStateStore } from './IWhatsAppAuthStateStore';
+import { IWhatsAppRecipientQuery } from './IWhatsAppRecipientQuery';
 import {
   BaileysSendResult,
+  BaileysDisconnectReason,
   IBaileysMessageSender,
   IBaileysSocketFactory,
   IBaileysSocketInstance,
@@ -12,7 +14,8 @@ import {
 } from './BaileysTypes';
 import { DefaultBaileysSocketFactory } from './DefaultBaileysSocketFactory';
 
-export class BaileysConnectionManager implements IWhatsAppConnection, IBaileysMessageSender {
+export class BaileysConnectionManager
+  implements IWhatsAppConnection, IBaileysMessageSender, IWhatsAppRecipientQuery {
   private state: WhatsAppConnectionState = 'DISCONNECTED';
   private latestQr: string | null = null;
   private disconnectReason: WhatsAppDisconnectReason | null = null;
@@ -50,6 +53,19 @@ export class BaileysConnectionManager implements IWhatsAppConnection, IBaileysMe
       return this;
     }
     return null;
+  }
+
+  async queryRegisteredRecipient(phone: string): Promise<Array<{ jid: string; exists: boolean }>> {
+    if (this.state !== 'CONNECTED' || !this.socket) {
+      throw new Error('WHATSAPP_NOT_CONNECTED');
+    }
+
+    if (!this.socket.onWhatsApp) {
+      throw new Error('WHATSAPP_QUERY_NOT_SUPPORTED');
+    }
+
+    const results = await this.socket.onWhatsApp(phone);
+    return results ?? [];
   }
 
   private notifyPersistenceSuccess(): void {
@@ -118,7 +134,12 @@ export class BaileysConnectionManager implements IWhatsAppConnection, IBaileysMe
   }
 
   async start(): Promise<void> {
-    if (this.state === 'CONNECTED' || this.state === 'CONNECTING' || this.state === 'LOGGED_OUT') {
+    if (
+      this.state === 'CONNECTED' ||
+      this.state === 'CONNECTING' ||
+      this.state === 'LOGGED_OUT' ||
+      this.state === 'DEVICE_REMOVED'
+    ) {
       return;
     }
 
@@ -187,10 +208,16 @@ export class BaileysConnectionManager implements IWhatsAppConnection, IBaileysMe
             statusCode = (error as any).statusCode;
           }
 
-          if (statusCode === DisconnectReason.loggedOut || statusCode === 401) {
+          const errorMessage = error?.message?.toLowerCase() || '';
+          const isDeviceRemoved = errorMessage.includes('device_removed') || (error as any)?.data?.reason === 'device_removed';
+
+          if (isDeviceRemoved) {
+            this.state = 'DEVICE_REMOVED';
+            this.disconnectReason = 'DEVICE_REMOVED';
+          } else if (statusCode === BaileysDisconnectReason.loggedOut || statusCode === 401) {
             this.state = 'LOGGED_OUT';
             this.disconnectReason = 'LOGGED_OUT';
-          } else if (statusCode === DisconnectReason.restartRequired || statusCode === 515) {
+          } else if (statusCode === BaileysDisconnectReason.restartRequired || statusCode === 515) {
             this.state = 'RECONNECTING';
             this.disconnectReason = 'RESTART_REQUIRED';
           } else if (statusCode !== undefined) {

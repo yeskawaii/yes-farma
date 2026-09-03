@@ -86,6 +86,8 @@ export const main = async () => {
 
   const runner = new WhatsAppTestSendRunner({
     connection: runtime.connection,
+    deliveryPort: runtime.delivery,
+    recipientResolver: runtime.recipientResolver,
     to,
     confirm,
     timeoutMs,

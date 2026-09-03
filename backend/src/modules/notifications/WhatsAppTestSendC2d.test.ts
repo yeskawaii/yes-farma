@@ -57,6 +57,10 @@ class FakeTestConnection implements IWhatsAppConnection {
       }
     };
   }
+  async queryRegisteredRecipient(phone: string): Promise<Array<{ jid: string; exists: boolean }>> {
+    const digitsOnly = phone.replace(/^\+/, '');
+    return [{ jid: `${digitsOnly}@s.whatsapp.net`, exists: true }];
+  }
 }
 
 class FakeDeliveryPort implements INotificationDeliveryPort {

@@ -137,6 +137,11 @@ class FakeWhatsAppConnection implements IWhatsAppConnection, IBaileysMessageSend
     this.sentMessages.push({ jid, content });
     return this.nextResult;
   }
+
+  async queryRegisteredRecipient(phone: string): Promise<Array<{ jid: string; exists: boolean }>> {
+    const digitsOnly = phone.replace(/^\+/, '');
+    return [{ jid: `${digitsOnly}@s.whatsapp.net`, exists: true }];
+  }
 }
 
 test('Baileys Delivery Adapter & Connection Lifecycle - Phase C1', async (t) => {

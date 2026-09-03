@@ -1,7 +1,7 @@
 import { IWhatsAppConnection } from './IWhatsAppConnection';
 import { IQrRenderer } from './IQrRenderer';
 
-export type WhatsAppLinkStatus = 'LINKED' | 'LOGGED_OUT' | 'ERROR' | 'TIMEOUT' | 'ABORTED';
+export type WhatsAppLinkStatus = 'LINKED' | 'LOGGED_OUT' | 'DEVICE_REMOVED' | 'ERROR' | 'TIMEOUT' | 'ABORTED';
 
 export interface WhatsAppLinkResult {
   status: WhatsAppLinkStatus;
@@ -111,6 +111,14 @@ export class WhatsAppLinkRunner {
             this.logger.error('WHATSAPP_LINK_FAILED=AUTH_PERSISTENCE');
             return { status: 'ERROR' };
           }
+        } else if (state === 'DEVICE_REMOVED') {
+          this.logger.error('WHATSAPP_LINK_FAILED=DEVICE_REMOVED');
+          try {
+            await this.connection.close();
+          } catch {
+            // Safe disposal
+          }
+          return { status: 'DEVICE_REMOVED' };
         } else if (state === 'LOGGED_OUT') {
           this.logger.error('WHATSAPP_LINK_FAILED=LOGGED_OUT');
           try {
