@@ -107,8 +107,13 @@ export class WhatsAppLinkRunner {
             await this.connection.close();
             this.logger.info('WHATSAPP_LINKED=YES');
             return { status: 'LINKED' };
-          } catch {
-            this.logger.error('WHATSAPP_LINK_FAILED=AUTH_PERSISTENCE');
+          } catch (err: unknown) {
+            const isTimeout = err instanceof Error && err.message === 'WHATSAPP_AUTH_PERSISTENCE_TIMEOUT';
+            if (isTimeout) {
+              this.logger.error('WHATSAPP_LINK_FAILED=AUTH_PERSISTENCE_TIMEOUT');
+            } else {
+              this.logger.error('WHATSAPP_LINK_FAILED=AUTH_PERSISTENCE');
+            }
             return { status: 'ERROR' };
           }
         } else if (state === 'DEVICE_REMOVED') {

@@ -68,26 +68,43 @@ export class WhatsAppProbeRunner {
         const state = this.connection.getState();
 
         if (state === 'CONNECTED') {
-          this.logger.info('WHATSAPP_CONNECTION_PROBE=PASS');
-          await this.connection.close();
-          return { status: 'PASS' };
+          try {
+            await this.connection.close();
+            this.logger.info('WHATSAPP_CONNECTION_PROBE=PASS');
+            return { status: 'PASS' };
+          } catch {
+            this.logger.error('WHATSAPP_CONNECTION_PROBE=CLEANUP_FAILED');
+            return { status: 'FAIL' };
+          }
         }
 
         if (state === 'DEVICE_REMOVED') {
           this.logger.error('WHATSAPP_CONNECTION_PROBE=DEVICE_REMOVED');
-          await this.connection.close();
+          try {
+            await this.connection.close();
+          } catch {
+            // Safe disposal
+          }
           return { status: 'DEVICE_REMOVED' };
         }
 
         if (state === 'LOGGED_OUT') {
           this.logger.error('WHATSAPP_CONNECTION_PROBE=LOGGED_OUT');
-          await this.connection.close();
+          try {
+            await this.connection.close();
+          } catch {
+            // Safe disposal
+          }
           return { status: 'LOGGED_OUT' };
         }
 
         if (state === 'ERROR' || state === 'QR_REQUIRED') {
           this.logger.error('WHATSAPP_CONNECTION_PROBE=FAIL');
-          await this.connection.close();
+          try {
+            await this.connection.close();
+          } catch {
+            // Safe disposal
+          }
           return { status: 'FAIL' };
         }
 
@@ -97,14 +114,22 @@ export class WhatsAppProbeRunner {
             : null;
           if (reason === 'RESTART_REQUIRED') {
             this.logger.error('WHATSAPP_CONNECTION_PROBE=FAIL');
-            await this.connection.close();
+            try {
+              await this.connection.close();
+            } catch {
+              // Safe disposal
+            }
             return { status: 'FAIL' };
           }
         }
 
         if (Date.now() - startTime >= this.timeoutMs) {
           this.logger.error('WHATSAPP_CONNECTION_PROBE=TIMEOUT');
-          await this.connection.close();
+          try {
+            await this.connection.close();
+          } catch {
+            // Safe disposal
+          }
           return { status: 'TIMEOUT' };
         }
 

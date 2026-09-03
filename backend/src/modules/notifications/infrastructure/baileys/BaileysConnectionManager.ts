@@ -1,6 +1,10 @@
 import type { ConnectionState, AuthenticationCreds } from '@whiskeysockets/baileys';
 import { isBoom } from '@hapi/boom';
-import { IWhatsAppConnection, WaitForAuthPersistenceOptions } from './IWhatsAppConnection';
+import {
+  IWhatsAppConnection,
+  WaitForAuthPersistenceOptions,
+  CloseWhatsAppConnectionOptions
+} from './IWhatsAppConnection';
 import { IWhatsAppAuthStateStore } from './IWhatsAppAuthStateStore';
 import { IWhatsAppRecipientQuery } from './IWhatsAppRecipientQuery';
 import {
@@ -29,6 +33,9 @@ export class BaileysConnectionManager
   private persistenceChain: Promise<void> = Promise.resolve();
   private persistenceListeners: Array<{ resolve: () => void; reject: (err: Error) => void }> = [];
 
+  private isClosing = false;
+  private closingPromise: Promise<void> | null = null;
+
   constructor(
     private readonly authStateStore: IWhatsAppAuthStateStore,
     socketFactory?: IBaileysSocketFactory
@@ -49,14 +56,14 @@ export class BaileysConnectionManager
   }
 
   getMessageSender(): IBaileysMessageSender | null {
-    if (this.state === 'CONNECTED' && this.socket) {
-      return this;
+    if (this.isClosing || this.state !== 'CONNECTED' || !this.socket) {
+      return null;
     }
-    return null;
+    return this;
   }
 
   async queryRegisteredRecipient(phone: string): Promise<Array<{ jid: string; exists: boolean }>> {
-    if (this.state !== 'CONNECTED' || !this.socket) {
+    if (this.isClosing || this.state !== 'CONNECTED' || !this.socket) {
       throw new Error('WHATSAPP_NOT_CONNECTED');
     }
 
@@ -66,6 +73,45 @@ export class BaileysConnectionManager
 
     const results = await this.socket.onWhatsApp(phone);
     return results ?? [];
+  }
+
+  private extractDisconnectInfo(error: unknown): {
+    statusCode: number | undefined;
+    isDeviceRemoved: boolean;
+  } {
+    let statusCode: number | undefined;
+
+    if (isBoom(error)) {
+      statusCode = error.output.statusCode;
+    } else if (
+      error &&
+      typeof error === 'object' &&
+      'output' in error &&
+      typeof (error as any).output?.statusCode === 'number'
+    ) {
+      statusCode = (error as any).output.statusCode;
+    } else if (
+      error &&
+      typeof error === 'object' &&
+      'statusCode' in error &&
+      typeof (error as any).statusCode === 'number'
+    ) {
+      statusCode = (error as any).statusCode;
+    }
+
+    const errorMessage =
+      (error instanceof Error
+        ? error.message
+        : typeof (error as any)?.message === 'string'
+        ? (error as any).message
+        : ''
+      ).toLowerCase();
+
+    const isDeviceRemoved =
+      errorMessage.includes('device_removed') ||
+      (error as any)?.data?.reason === 'device_removed';
+
+    return { statusCode, isDeviceRemoved };
   }
 
   private notifyPersistenceSuccess(): void {
@@ -135,6 +181,7 @@ export class BaileysConnectionManager
 
   async start(): Promise<void> {
     if (
+      this.isClosing ||
       this.state === 'CONNECTED' ||
       this.state === 'CONNECTING' ||
       this.state === 'LOGGED_OUT' ||
@@ -173,6 +220,20 @@ export class BaileysConnectionManager
       this.socket.ev.on('connection.update', (update: Partial<ConnectionState>) => {
         const { connection, lastDisconnect, qr } = update;
 
+        if (this.isClosing) {
+          if (connection === 'close') {
+            const { statusCode, isDeviceRemoved } = this.extractDisconnectInfo(lastDisconnect?.error);
+            if (isDeviceRemoved) {
+              this.state = 'DEVICE_REMOVED';
+              this.disconnectReason = 'DEVICE_REMOVED';
+            } else if (statusCode === BaileysDisconnectReason.loggedOut || statusCode === 401) {
+              this.state = 'LOGGED_OUT';
+              this.disconnectReason = 'LOGGED_OUT';
+            }
+          }
+          return;
+        }
+
         if (qr && typeof qr === 'string') {
           this.latestQr = qr;
           this.qrObservedSinceStart = true;
@@ -197,19 +258,7 @@ export class BaileysConnectionManager
             this.socket = null;
           }
 
-          const error = lastDisconnect?.error;
-          let statusCode: number | undefined;
-
-          if (isBoom(error)) {
-            statusCode = error.output.statusCode;
-          } else if (error && typeof error === 'object' && 'output' in error && typeof (error as any).output?.statusCode === 'number') {
-            statusCode = (error as any).output.statusCode;
-          } else if (error && typeof error === 'object' && 'statusCode' in error && typeof (error as any).statusCode === 'number') {
-            statusCode = (error as any).statusCode;
-          }
-
-          const errorMessage = error?.message?.toLowerCase() || '';
-          const isDeviceRemoved = errorMessage.includes('device_removed') || (error as any)?.data?.reason === 'device_removed';
+          const { statusCode, isDeviceRemoved } = this.extractDisconnectInfo(lastDisconnect?.error);
 
           if (isDeviceRemoved) {
             this.state = 'DEVICE_REMOVED';
@@ -261,33 +310,102 @@ export class BaileysConnectionManager
     }
   }
 
-  async close(): Promise<void> {
-    try {
-      await this.persistenceChain;
-    } catch {
-      // Handled below
+  async close(options?: CloseWhatsAppConnectionOptions): Promise<void> {
+    if (this.closingPromise) {
+      return this.closingPromise;
     }
 
+    this.closingPromise = this.performClose(options);
+    try {
+      await this.closingPromise;
+    } finally {
+      this.closingPromise = null;
+    }
+  }
+
+  private async performClose(options?: CloseWhatsAppConnectionOptions): Promise<void> {
+    this.isClosing = true;
+    this.latestQr = null;
+
+    const timeoutMs = options?.persistenceTimeoutMs ?? 10_000;
+    const startTime = Date.now();
+    const deadline = startTime + timeoutMs;
+
+    // 1. Dispose socket cleanly without logout
     if (this.socket) {
+      const sockToDispose = this.socket;
+      this.socket = null;
       try {
-        this.socket.end();
+        const maybePromise: any = sockToDispose.end();
+        if (maybePromise && typeof maybePromise.then === 'function') {
+          await Promise.race([
+            maybePromise.catch(() => {}),
+            new Promise((resolve) => setTimeout(resolve, 1000))
+          ]);
+        }
       } catch {
         // Safe disposal
       }
-      this.socket = null;
     }
-    this.latestQr = null;
-    this.state = 'DISCONNECTED';
-    this.disconnectReason = null;
 
-    if (this.persistenceFailureSinceStart && !this.hasReportedCloseError) {
-      this.hasReportedCloseError = true;
-      throw new Error('WHATSAPP_AUTH_PERSISTENCE_FAILED');
+    // 2. Drain persistence chain with global deadline
+    let persistenceTimedOut = false;
+    while (true) {
+      const currentChain = this.persistenceChain;
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) {
+        persistenceTimedOut = true;
+        break;
+      }
+
+      let timer: NodeJS.Timeout | null = null;
+      const timeoutPromise = new Promise<'TIMEOUT'>((resolve) => {
+        timer = setTimeout(() => resolve('TIMEOUT'), remainingMs);
+      });
+
+      const raceResult = await Promise.race([
+        currentChain.then(() => 'DRAINED').catch(() => 'DRAINED'),
+        timeoutPromise
+      ]);
+
+      if (timer) {
+        clearTimeout(timer);
+      }
+
+      if (raceResult === 'TIMEOUT') {
+        persistenceTimedOut = true;
+        break;
+      }
+
+      if (this.persistenceChain === currentChain) {
+        break;
+      }
+    }
+
+    // 3. Finalize state
+    if (this.state !== 'DEVICE_REMOVED' && this.state !== 'LOGGED_OUT') {
+      this.state = 'DISCONNECTED';
+      this.disconnectReason = null;
+    }
+    this.isClosing = false;
+
+    // 4. Evaluate persistence status:
+    // Sticky persistence failure takes precedence over timeout
+    if (this.persistenceFailureSinceStart) {
+      if (!this.hasReportedCloseError) {
+        this.hasReportedCloseError = true;
+        throw new Error('WHATSAPP_AUTH_PERSISTENCE_FAILED');
+      }
+      return;
+    }
+
+    if (persistenceTimedOut) {
+      throw new Error('WHATSAPP_AUTH_PERSISTENCE_TIMEOUT');
     }
   }
 
   async sendMessage(jid: string, content: { text: string }): Promise<BaileysSendResult | null | undefined> {
-    if (this.state !== 'CONNECTED' || !this.socket) {
+    if (this.isClosing || this.state !== 'CONNECTED' || !this.socket) {
       throw new Error('WHATSAPP_NOT_CONNECTED');
     }
     return this.socket.sendMessage(jid, content);

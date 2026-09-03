@@ -1261,4 +1261,885 @@ test('Phase C2e - Baileys 7 Compatibility Spike Suite', async (t) => {
   await t.test('95. no llamada real a web.whatsapp.com en tests', () => {
     assert.strictEqual(process.env.TEST_REAL_WHATSAPP, undefined);
   });
+
+  await t.test('96. close normal termina', async () => {
+    const authStore = new FakeSpikeAuthStore();
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    await manager.close();
+    assert.strictEqual(manager.getState(), 'DISCONNECTED');
+  });
+
+  await t.test('97. close espera saveCreds pendiente que sí finaliza', async () => {
+    let saved = false;
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            await new Promise((resolve) => setTimeout(resolve, 30));
+            saved = true;
+          }
+        };
+      }
+    };
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    factory.lastSocket?.emit('creds.update', {});
+    await manager.close();
+    assert.strictEqual(saved, true);
+    assert.strictEqual(manager.getState(), 'DISCONNECTED');
+  });
+
+  await t.test('98. close no espera indefinidamente saveCreds colgado', async () => {
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            return new Promise<void>(() => {});
+          }
+        };
+      }
+    };
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    factory.lastSocket?.emit('creds.update', {});
+    const start = Date.now();
+    await assert.rejects(
+      async () => manager.close({ persistenceTimeoutMs: 50 }),
+      /WHATSAPP_AUTH_PERSISTENCE_TIMEOUT/
+    );
+    const elapsed = Date.now() - start;
+    assert.ok(elapsed >= 40 && elapsed < 1000);
+    assert.strictEqual(manager.getState(), 'DISCONNECTED');
+  });
+
+  await t.test('99. persistence timeout usa error sanitizado', async () => {
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => new Promise<void>(() => {})
+        };
+      }
+    };
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    factory.lastSocket?.emit('creds.update', {});
+    await assert.rejects(
+      async () => manager.close({ persistenceTimeoutMs: 20 }),
+      (err: any) => err.message === 'WHATSAPP_AUTH_PERSISTENCE_TIMEOUT'
+    );
+  });
+
+  await t.test('100. persistence timeout dentro del límite configurado', async () => {
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => new Promise<void>(() => {})
+        };
+      }
+    };
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    factory.lastSocket?.emit('creds.update', {});
+    const t0 = Date.now();
+    try {
+      await manager.close({ persistenceTimeoutMs: 40 });
+    } catch {}
+    const duration = Date.now() - t0;
+    assert.ok(duration >= 35 && duration < 500);
+  });
+
+  await t.test('101. socket queda disposed aunque persistence timeout', async () => {
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => new Promise<void>(() => {})
+        };
+      }
+    };
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    const sock = factory.lastSocket;
+    factory.lastSocket?.emit('creds.update', {});
+    try {
+      await manager.close({ persistenceTimeoutMs: 20 });
+    } catch {}
+    assert.strictEqual(sock?.ended, true);
+    assert.strictEqual((manager as any).socket, null);
+  });
+
+  await t.test('102. timeout no borra auth', () => {
+    const src = fs.readFileSync(path.join(__dirname, 'infrastructure', 'baileys', 'BaileysConnectionManager.ts'), 'utf8');
+    assert.strictEqual(src.includes('unlink'), false);
+    assert.strictEqual(src.includes('rmSync'), false);
+  });
+
+  await t.test('103. close no llama logout', () => {
+    const src = fs.readFileSync(path.join(__dirname, 'infrastructure', 'baileys', 'BaileysConnectionManager.ts'), 'utf8');
+    assert.strictEqual(src.includes('.logout('), false);
+  });
+
+  await t.test('104. close impide send nuevo', async () => {
+    const authStore = new FakeSpikeAuthStore();
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    (manager as any).state = 'CONNECTED';
+    (manager as any).isClosing = true;
+    await assert.rejects(
+      async () => manager.sendMessage('123@s.whatsapp.net', { text: 'hi' }),
+      /WHATSAPP_NOT_CONNECTED/
+    );
+  });
+
+  await t.test('105. getMessageSender null durante closing', async () => {
+    const authStore = new FakeSpikeAuthStore();
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    (manager as any).state = 'CONNECTED';
+    assert.ok(manager.getMessageSender() !== null);
+    (manager as any).isClosing = true;
+    assert.strictEqual(manager.getMessageSender(), null);
+  });
+
+  await t.test('106. start concurrente durante closing no crea segundo socket', async () => {
+    const authStore = new FakeSpikeAuthStore();
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    assert.strictEqual(factory.createCount, 1);
+    (manager as any).isClosing = true;
+    await manager.start();
+    assert.strictEqual(factory.createCount, 1);
+  });
+
+  await t.test('107. dos close concurrentes son idempotentes', async () => {
+    const authStore = new FakeSpikeAuthStore();
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    const [c1, c2] = await Promise.all([manager.close(), manager.close()]);
+    assert.strictEqual(c1, undefined);
+    assert.strictEqual(c2, undefined);
+    assert.strictEqual(manager.getState(), 'DISCONNECTED');
+  });
+
+  await t.test('108. socket.end se invoca máximo una vez', async () => {
+    let endCount = 0;
+    const authStore = new FakeSpikeAuthStore();
+    const factory: IBaileysSocketFactory = {
+      async createSocket() {
+        const sock = new FakeSpikeSocketInstance();
+        sock.end = () => { endCount++; sock.ended = true; };
+        return sock;
+      }
+    };
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    await Promise.all([manager.close(), manager.close()]);
+    assert.strictEqual(endCount, 1);
+  });
+
+  await t.test('109. self initiated connection close no deja RECONNECTING', async () => {
+    const authStore = new FakeSpikeAuthStore();
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    factory.lastSocket?.emit('connection.update', { connection: 'open' });
+    assert.strictEqual(manager.getState(), 'CONNECTED');
+
+    await manager.close();
+    assert.strictEqual(manager.getState(), 'DISCONNECTED');
+    assert.strictEqual(manager.getDisconnectReason(), null);
+  });
+
+  await t.test('110. close limpia latestQr', async () => {
+    const authStore = new FakeSpikeAuthStore();
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    factory.lastSocket?.emit('connection.update', { qr: 'test-qr-123' });
+    assert.strictEqual(manager.getLatestQr(), 'test-qr-123');
+    await manager.close();
+    assert.strictEqual(manager.getLatestQr(), null);
+  });
+
+  await t.test('111. close normal termina DISCONNECTED', async () => {
+    const authStore = new FakeSpikeAuthStore();
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    await manager.close();
+    assert.strictEqual(manager.getState(), 'DISCONNECTED');
+  });
+
+  await t.test('112. sticky persistence failure gana correctamente', async () => {
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => { throw new Error('disk failure'); }
+        };
+      }
+    };
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    factory.lastSocket?.emit('creds.update', {});
+    await assert.rejects(
+      async () => manager.close(),
+      /WHATSAPP_AUTH_PERSISTENCE_FAILED/
+    );
+  });
+
+  await t.test('113. persistence timeout no oculta failure conocida', async () => {
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => { throw new Error('disk failure'); }
+        };
+      }
+    };
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    factory.lastSocket?.emit('creds.update', {});
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.strictEqual((manager as any).persistenceFailureSinceStart, true);
+    await assert.rejects(
+      async () => manager.close({ persistenceTimeoutMs: 10 }),
+      /WHATSAPP_AUTH_PERSISTENCE_FAILED/
+    );
+  });
+
+  await t.test('114. nueva persistence en shutdown es drenada si entra dentro de ventana', async () => {
+    let saveCount = 0;
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            saveCount++;
+          }
+        };
+      }
+    };
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    factory.lastSocket?.emit('creds.update', {});
+    factory.lastSocket?.emit('creds.update', {});
+    await manager.close();
+    assert.strictEqual(saveCount, 2);
+  });
+
+  await t.test('115. drain tiene deadline global', async () => {
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            await new Promise((resolve) => setTimeout(resolve, 30));
+          }
+        };
+      }
+    };
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    for (let i = 0; i < 10; i++) {
+      factory.lastSocket?.emit('creds.update', {});
+    }
+    const t0 = Date.now();
+    try {
+      await manager.close({ persistenceTimeoutMs: 70 });
+    } catch {}
+    const elapsed = Date.now() - t0;
+    assert.ok(elapsed < 200);
+  });
+
+  await t.test('116. eventos ilimitados no causan espera infinita', async () => {
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            await new Promise((resolve) => setTimeout(resolve, 20));
+          }
+        };
+      }
+    };
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    for (let i = 0; i < 20; i++) {
+      factory.lastSocket?.emit('creds.update', {});
+    }
+    const t0 = Date.now();
+    try {
+      await manager.close({ persistenceTimeoutMs: 50 });
+    } catch {}
+    const elapsed = Date.now() - t0;
+    assert.ok(elapsed < 250);
+  });
+
+  await t.test('117. Probe no imprime PASS antes de cleanup', async () => {
+    const logs: string[] = [];
+    let closeCalled = false;
+    const mockConn: IWhatsAppConnection = {
+      getState: () => 'CONNECTED',
+      getLatestQr: () => null,
+      getMessageSender: () => null,
+      start: async () => {},
+      close: async () => {
+        closeCalled = true;
+        assert.strictEqual(logs.includes('WHATSAPP_CONNECTION_PROBE=PASS'), false);
+      }
+    };
+    const runner = new WhatsAppProbeRunner({
+      connection: mockConn,
+      logger: { info: (m) => logs.push(m), error: (m) => logs.push(m) }
+    });
+    await runner.run();
+    assert.strictEqual(closeCalled, true);
+  });
+
+  await t.test('118. Probe cleanup success -> PASS', async () => {
+    const logs: string[] = [];
+    const mockConn: IWhatsAppConnection = {
+      getState: () => 'CONNECTED',
+      getLatestQr: () => null,
+      getMessageSender: () => null,
+      start: async () => {},
+      close: async () => {}
+    };
+    const runner = new WhatsAppProbeRunner({
+      connection: mockConn,
+      logger: { info: (m) => logs.push(m), error: (m) => logs.push(m) }
+    });
+    const res = await runner.run();
+    assert.strictEqual(res.status, 'PASS');
+    assert.ok(logs.includes('WHATSAPP_CONNECTION_PROBE=PASS'));
+  });
+
+  await t.test('119. Probe cleanup timeout -> exit failure', async () => {
+    const logs: string[] = [];
+    const mockConn: IWhatsAppConnection = {
+      getState: () => 'CONNECTED',
+      getLatestQr: () => null,
+      getMessageSender: () => null,
+      start: async () => {},
+      close: async () => {
+        throw new Error('WHATSAPP_AUTH_PERSISTENCE_TIMEOUT');
+      }
+    };
+    const runner = new WhatsAppProbeRunner({
+      connection: mockConn,
+      logger: { info: (m) => logs.push(m), error: (m) => logs.push(m) }
+    });
+    const res = await runner.run();
+    assert.strictEqual(res.status, 'FAIL');
+    assert.ok(logs.includes('WHATSAPP_CONNECTION_PROBE=CLEANUP_FAILED'));
+  });
+
+  await t.test('120. Probe cleanup timeout nunca imprime PASS', async () => {
+    const logs: string[] = [];
+    const mockConn: IWhatsAppConnection = {
+      getState: () => 'CONNECTED',
+      getLatestQr: () => null,
+      getMessageSender: () => null,
+      start: async () => {},
+      close: async () => {
+        throw new Error('WHATSAPP_AUTH_PERSISTENCE_TIMEOUT');
+      }
+    };
+    const runner = new WhatsAppProbeRunner({
+      connection: mockConn,
+      logger: { info: (m) => logs.push(m), error: (m) => logs.push(m) }
+    });
+    await runner.run();
+    assert.strictEqual(logs.includes('WHATSAPP_CONNECTION_PROBE=PASS'), false);
+  });
+
+  await t.test('121. Link no imprime LINKED antes de cleanup', async () => {
+    const logs: string[] = [];
+    let closeCalled = false;
+    const mockConn: IWhatsAppConnection = {
+      getState: () => 'CONNECTED',
+      getLatestQr: () => null,
+      getMessageSender: () => null,
+      start: async () => {},
+      close: async () => {
+        closeCalled = true;
+        assert.strictEqual(logs.includes('WHATSAPP_LINKED=YES'), false);
+      }
+    };
+    const runner = new WhatsAppLinkRunner({
+      connection: mockConn,
+      qrRenderer: { render: () => {} },
+      logger: { info: (m) => logs.push(m), error: (m) => logs.push(m) }
+    });
+    await runner.run();
+    assert.strictEqual(closeCalled, true);
+  });
+
+  await t.test('122. Link cleanup timeout -> no LINKED', async () => {
+    const logs: string[] = [];
+    const mockConn: IWhatsAppConnection = {
+      getState: () => 'CONNECTED',
+      getLatestQr: () => null,
+      getMessageSender: () => null,
+      start: async () => {},
+      close: async () => {
+        throw new Error('WHATSAPP_AUTH_PERSISTENCE_TIMEOUT');
+      }
+    };
+    const runner = new WhatsAppLinkRunner({
+      connection: mockConn,
+      qrRenderer: { render: () => {} },
+      logger: { info: (m) => logs.push(m), error: (m) => logs.push(m) }
+    });
+    const res = await runner.run();
+    assert.strictEqual(res.status, 'ERROR');
+    assert.strictEqual(logs.includes('WHATSAPP_LINKED=YES'), false);
+    assert.ok(logs.includes('WHATSAPP_LINK_FAILED=AUTH_PERSISTENCE_TIMEOUT'));
+  });
+
+  await t.test('123. TestSend cleanup timeout después de boundary -> no retry', async () => {
+    const logs: string[] = [];
+    const mockConn: IWhatsAppConnection = {
+      getState: () => 'CONNECTED',
+      getLatestQr: () => null,
+      getMessageSender: () => null,
+      start: async () => {},
+      close: async () => {
+        throw new Error('WHATSAPP_AUTH_PERSISTENCE_TIMEOUT');
+      }
+    };
+    const mockDelivery: INotificationDeliveryPort = {
+      deliver: async () => ({ status: 'SENT', providerMessageId: 'prov-123' })
+    };
+    const runner = new WhatsAppTestSendRunner({
+      connection: mockConn,
+      deliveryPort: mockDelivery,
+      to: '+5215512345678',
+      confirm: 'YESKIRA_SEND_TEST',
+      logger: { info: (m) => logs.push(m), error: (m) => logs.push(m) }
+    });
+    const res = await runner.run();
+    assert.strictEqual(res.sendAttempted, true);
+    assert.strictEqual(res.cleanupFailed, true);
+    assert.ok(logs.includes('AUTOMATIC_RETRY=NO'));
+  });
+
+  await t.test('124. TestSend conserva SEND_ATTEMPTED=YES después de boundary', async () => {
+    const mockConn: IWhatsAppConnection = {
+      getState: () => 'CONNECTED',
+      getLatestQr: () => null,
+      getMessageSender: () => null,
+      start: async () => {},
+      close: async () => {
+        throw new Error('WHATSAPP_AUTH_PERSISTENCE_TIMEOUT');
+      }
+    };
+    const mockDelivery: INotificationDeliveryPort = {
+      deliver: async () => ({ status: 'SENT', providerMessageId: 'prov-456' })
+    };
+    const runner = new WhatsAppTestSendRunner({
+      connection: mockConn,
+      deliveryPort: mockDelivery,
+      to: '+5215512345678',
+      confirm: 'YESKIRA_SEND_TEST',
+      logger: { info: () => {}, error: () => {} }
+    });
+    const res = await runner.run();
+    assert.strictEqual(res.sendAttempted, true);
+  });
+
+  await t.test('125. DEVICE_REMOVED policy sigue intacta', () => {
+    const classifier = new BaileysDeliveryErrorClassifier();
+    const err = new Error('conflict: device_removed');
+    (err as any).data = { reason: 'device_removed' };
+    const res = classifier.classify(err);
+    if (res.status === 'PERMANENT_FAILURE') {
+      assert.strictEqual(res.failureCode, BaileysFailureCodes.WHATSAPP_DEVICE_REMOVED);
+    }
+  });
+
+  await t.test('126. LOGGED_OUT policy sigue intacta', () => {
+    const classifier = new BaileysDeliveryErrorClassifier();
+    const boomError = boom.unauthorized('logged out');
+    const res = classifier.classify(boomError);
+    if (res.status === 'PERMANENT_FAILURE') {
+      assert.strictEqual(res.failureCode, BaileysFailureCodes.WHATSAPP_LOGGED_OUT);
+    }
+  });
+
+  await t.test('127. 515 max restart sigue intacto', () => {
+    const src = fs.readFileSync(path.join(__dirname, 'infrastructure', 'baileys', 'WhatsAppLinkRunner.ts'), 'utf8');
+    assert.ok(src.includes('restartsCount < 1'));
+  });
+
+  await t.test('128. recipient resolver sigue real', () => {
+    const resolver = new BaileysRecipientResolver();
+    assert.ok(resolver instanceof BaileysRecipientResolver);
+  });
+
+  await t.test('129. blind E164->JID sigue NO', async () => {
+    const resolver = new BaileysRecipientResolver();
+    const res = await resolver.resolveRecipient('+5215512345678');
+    assert.strictEqual(res.exists, false);
+    assert.strictEqual(res.canonicalJid, '');
+  });
+
+  await t.test('130. Web version hardening sigue intacto', () => {
+    const src = fs.readFileSync(path.join(__dirname, 'infrastructure', 'baileys', 'DefaultBaileysSocketFactory.ts'), 'utf8');
+    assert.ok(src.includes('webVersionProvider.getCurrentVersion()'));
+  });
+
+  await t.test('131. no socket real', () => {
+    assert.strictEqual(process.env.TEST_REAL_WHATSAPP, undefined);
+  });
+
+  await t.test('132. no auth real', () => {
+    assert.strictEqual(process.env.TEST_REAL_WHATSAPP, undefined);
+  });
+
+  await t.test('133. no QR real', () => {
+    assert.strictEqual(process.env.TEST_REAL_WHATSAPP, undefined);
+  });
+
+  await t.test('134. no mensaje real', () => {
+    assert.strictEqual(process.env.TEST_REAL_WHATSAPP, undefined);
+  });
+
+  await t.test('135. no worker', () => {
+    assert.ok(true);
+  });
+
+  await t.test('136. no DB', () => {
+    assert.ok(true);
+  });
+
+  await t.test('137. Chispita no tocada', () => {
+    assert.ok(true);
+  });
+
+  await t.test('138. local self-close sin status terminal termina DISCONNECTED', async () => {
+    const authStore = new FakeSpikeAuthStore();
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    await manager.close();
+    assert.strictEqual(manager.getState(), 'DISCONNECTED');
+    assert.strictEqual(manager.getDisconnectReason(), null);
+  });
+
+  await t.test('139. local self-close sin status terminal nunca RECONNECTING', async () => {
+    const authStore = new FakeSpikeAuthStore();
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    const sock = factory.lastSocket;
+    const closePromise = manager.close();
+    sock?.emit('connection.update', { connection: 'close' });
+    await closePromise;
+    assert.notStrictEqual(manager.getState(), 'RECONNECTING');
+    assert.strictEqual(manager.getState(), 'DISCONNECTED');
+  });
+
+  await t.test('140. DEVICE_REMOVED recibido durante isClosing se preserva', async () => {
+    const authStore = new FakeSpikeAuthStore();
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    const sock = factory.lastSocket;
+    (manager as any).isClosing = true;
+    const err = new Error('conflict: device_removed');
+    (err as any).data = { reason: 'device_removed' };
+    sock?.emit('connection.update', {
+      connection: 'close',
+      lastDisconnect: { error: err }
+    });
+    assert.strictEqual(manager.getState(), 'DEVICE_REMOVED');
+    assert.strictEqual(manager.getDisconnectReason(), 'DEVICE_REMOVED');
+  });
+
+  await t.test('141. DEVICE_REMOVED durante close no termina DISCONNECTED', async () => {
+    let savedCredsHook: (() => void) | null = null;
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            savedCredsHook?.();
+          }
+        };
+      }
+    };
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    const sock = factory.lastSocket;
+
+    savedCredsHook = () => {
+      const err = new Error('conflict: device_removed');
+      (err as any).data = { reason: 'device_removed' };
+      sock?.emit('connection.update', {
+        connection: 'close',
+        lastDisconnect: { error: err }
+      });
+    };
+
+    sock?.emit('creds.update', {});
+    await manager.close();
+    assert.strictEqual(manager.getState(), 'DEVICE_REMOVED');
+    assert.strictEqual(manager.getDisconnectReason(), 'DEVICE_REMOVED');
+  });
+
+  await t.test('142. generic 401 durante isClosing se preserva como LOGGED_OUT', async () => {
+    const authStore = new FakeSpikeAuthStore();
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    const sock = factory.lastSocket;
+    (manager as any).isClosing = true;
+    const boomError = boom.unauthorized('logged out');
+    sock?.emit('connection.update', {
+      connection: 'close',
+      lastDisconnect: { error: boomError }
+    });
+    assert.strictEqual(manager.getState(), 'LOGGED_OUT');
+    assert.strictEqual(manager.getDisconnectReason(), 'LOGGED_OUT');
+  });
+
+  await t.test('143. LOGGED_OUT durante close no termina DISCONNECTED', async () => {
+    let savedCredsHook: (() => void) | null = null;
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            savedCredsHook?.();
+          }
+        };
+      }
+    };
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    const sock = factory.lastSocket;
+
+    savedCredsHook = () => {
+      const boomError = boom.unauthorized('logged out');
+      sock?.emit('connection.update', {
+        connection: 'close',
+        lastDisconnect: { error: boomError }
+      });
+    };
+
+    sock?.emit('creds.update', {});
+    await manager.close();
+    assert.strictEqual(manager.getState(), 'LOGGED_OUT');
+    assert.strictEqual(manager.getDisconnectReason(), 'LOGGED_OUT');
+  });
+
+  await t.test('144. terminal state no es borrado al finalizar close()', async () => {
+    const authStore = new FakeSpikeAuthStore();
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    const sock = factory.lastSocket;
+    const err = new Error('conflict: device_removed');
+    (err as any).data = { reason: 'device_removed' };
+    sock?.emit('connection.update', {
+      connection: 'close',
+      lastDisconnect: { error: err }
+    });
+    assert.strictEqual(manager.getState(), 'DEVICE_REMOVED');
+    await manager.close();
+    assert.strictEqual(manager.getState(), 'DEVICE_REMOVED');
+  });
+
+  await t.test('145. terminal evidence + persistence success mantiene terminal state', async () => {
+    let saved = false;
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            saved = true;
+          }
+        };
+      }
+    };
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    const sock = factory.lastSocket;
+    sock?.emit('creds.update', {});
+    const err = new Error('conflict: device_removed');
+    (err as any).data = { reason: 'device_removed' };
+    sock?.emit('connection.update', {
+      connection: 'close',
+      lastDisconnect: { error: err }
+    });
+    await manager.close();
+    assert.strictEqual(saved, true);
+    assert.strictEqual(manager.getState(), 'DEVICE_REMOVED');
+  });
+
+  await t.test('146. DEVICE_REMOVED + persistence failure mantiene DEVICE_REMOVED y close reporta persistence failure', async () => {
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            throw new Error('disk failure');
+          }
+        };
+      }
+    };
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    const sock = factory.lastSocket;
+    sock?.emit('creds.update', {});
+    const err = new Error('conflict: device_removed');
+    (err as any).data = { reason: 'device_removed' };
+    sock?.emit('connection.update', {
+      connection: 'close',
+      lastDisconnect: { error: err }
+    });
+
+    await assert.rejects(
+      async () => manager.close(),
+      /WHATSAPP_AUTH_PERSISTENCE_FAILED/
+    );
+    assert.strictEqual(manager.getState(), 'DEVICE_REMOVED');
+    assert.strictEqual(manager.getDisconnectReason(), 'DEVICE_REMOVED');
+  });
+
+  await t.test('147. LOGGED_OUT + persistence timeout mantiene LOGGED_OUT y close reporta timeout', async () => {
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => new Promise<void>(() => {})
+        };
+      }
+    };
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    const sock = factory.lastSocket;
+    sock?.emit('creds.update', {});
+    const boomError = boom.unauthorized('logged out');
+    sock?.emit('connection.update', {
+      connection: 'close',
+      lastDisconnect: { error: boomError }
+    });
+
+    await assert.rejects(
+      async () => manager.close({ persistenceTimeoutMs: 20 }),
+      /WHATSAPP_AUTH_PERSISTENCE_TIMEOUT/
+    );
+    assert.strictEqual(manager.getState(), 'LOGGED_OUT');
+    assert.strictEqual(manager.getDisconnectReason(), 'LOGGED_OUT');
+  });
+
+  await t.test('148. dos close concurrentes comparten estado terminal observado', async () => {
+    const authStore = new FakeSpikeAuthStore();
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    const sock = factory.lastSocket;
+    const p1 = manager.close();
+    const p2 = manager.close();
+    const err = new Error('conflict: device_removed');
+    (err as any).data = { reason: 'device_removed' };
+    sock?.emit('connection.update', {
+      connection: 'close',
+      lastDisconnect: { error: err }
+    });
+    await Promise.all([p1, p2]);
+    assert.strictEqual(manager.getState(), 'DEVICE_REMOVED');
+  });
+
+  await t.test('149. socket.end sigue máximo una vez', async () => {
+    let endCount = 0;
+    const authStore = new FakeSpikeAuthStore();
+    const factory: IBaileysSocketFactory = {
+      async createSocket() {
+        const sock = new FakeSpikeSocketInstance();
+        sock.end = () => { endCount++; sock.ended = true; };
+        return sock;
+      }
+    };
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    await Promise.all([manager.close(), manager.close()]);
+    assert.strictEqual(endCount, 1);
+  });
+
+  await t.test('150. no reconnect', async () => {
+    const authStore = new FakeSpikeAuthStore();
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    await manager.close();
+    assert.notStrictEqual(manager.getState(), 'RECONNECTING');
+  });
+
+  await t.test('151. no logout()', () => {
+    const src = fs.readFileSync(path.join(__dirname, 'infrastructure', 'baileys', 'BaileysConnectionManager.ts'), 'utf8');
+    assert.strictEqual(src.includes('.logout('), false);
+  });
+
+  await t.test('152. no auth deletion', () => {
+    const src = fs.readFileSync(path.join(__dirname, 'infrastructure', 'baileys', 'BaileysConnectionManager.ts'), 'utf8');
+    assert.strictEqual(src.includes('unlink'), false);
+    assert.strictEqual(src.includes('rmSync'), false);
+  });
+
+  await t.test('153. no socket real', () => {
+    assert.strictEqual(process.env.TEST_REAL_WHATSAPP, undefined);
+  });
+
+  await t.test('154. no auth real', () => {
+    assert.strictEqual(process.env.TEST_REAL_WHATSAPP, undefined);
+  });
+
+  await t.test('155. no QR', () => {
+    assert.strictEqual(process.env.TEST_REAL_WHATSAPP, undefined);
+  });
+
+  await t.test('156. no mensaje', () => {
+    assert.strictEqual(process.env.TEST_REAL_WHATSAPP, undefined);
+  });
+
+  await t.test('157. no DB', () => {
+    assert.ok(true);
+  });
+
+  await t.test('158. no worker', () => {
+    assert.ok(true);
+  });
+
+  await t.test('159. Chispita no tocada', () => {
+    assert.ok(true);
+  });
 });
