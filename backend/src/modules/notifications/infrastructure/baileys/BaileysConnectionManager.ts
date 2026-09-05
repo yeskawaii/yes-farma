@@ -14,7 +14,8 @@ import {
   IBaileysSocketFactory,
   IBaileysSocketInstance,
   WhatsAppConnectionState,
-  WhatsAppDisconnectReason
+  WhatsAppDisconnectReason,
+  WhatsAppHistorySyncStats
 } from './BaileysTypes';
 import { DefaultBaileysSocketFactory } from './DefaultBaileysSocketFactory';
 
@@ -33,14 +34,21 @@ export class BaileysConnectionManager
   private persistenceChain: Promise<void> = Promise.resolve();
   private persistenceListeners: Array<{ resolve: () => void; reject: (err: Error) => void }> = [];
 
+  private historySyncEventsCount = 0;
+  private latestHistorySyncStats: WhatsAppHistorySyncStats | null = null;
+  private historySyncListeners: Array<(stats: WhatsAppHistorySyncStats) => void> = [];
+
   private isClosing = false;
   private closingPromise: Promise<void> | null = null;
+  private readonly syncFullHistory?: boolean | undefined;
 
   constructor(
     private readonly authStateStore: IWhatsAppAuthStateStore,
-    socketFactory?: IBaileysSocketFactory
+    socketFactory?: IBaileysSocketFactory,
+    options?: { syncFullHistory?: boolean | undefined }
   ) {
     this.socketFactory = socketFactory ?? new DefaultBaileysSocketFactory();
+    this.syncFullHistory = options?.syncFullHistory;
   }
 
   getState(): WhatsAppConnectionState {
@@ -208,13 +216,17 @@ export class BaileysConnectionManager
     this.persistenceChain = Promise.resolve();
     this.notifyPersistenceFailure(new Error('WHATSAPP_CONNECTION_RESET'));
 
+    this.historySyncEventsCount = 0;
+    this.latestHistorySyncStats = null;
+
     this.state = 'CONNECTING';
 
     try {
       const { state: authState, saveCreds } = await this.authStateStore.getAuthState();
 
       this.socket = await this.socketFactory.createSocket({
-        auth: authState
+        auth: authState,
+        ...(this.syncFullHistory !== undefined ? { syncFullHistory: this.syncFullHistory } : {})
       });
 
       this.socket.ev.on('connection.update', (update: Partial<ConnectionState>) => {
@@ -296,6 +308,32 @@ export class BaileysConnectionManager
             this.notifyPersistenceFailure(failureError);
           });
       });
+
+      const socketEvents = this.socket.ev as any;
+      if (typeof socketEvents?.on === 'function') {
+        socketEvents.on('messaging-history.set', (payload: any) => {
+          const stats: WhatsAppHistorySyncStats = {
+            eventReceived: true,
+            eventsCount: ++this.historySyncEventsCount,
+            syncType: payload?.syncType ?? null,
+            progress: typeof payload?.progress === 'number' ? payload.progress : null,
+            isLatest: Boolean(payload?.isLatest),
+            lidPnMappingsCount: Array.isArray(payload?.lidPnMappings) ? payload.lidPnMappings.length : 0,
+            chatsCount: Array.isArray(payload?.chats) ? payload.chats.length : 0,
+            contactsCount: Array.isArray(payload?.contacts) ? payload.contacts.length : 0,
+            messagesCount: Array.isArray(payload?.messages) ? payload.messages.length : 0
+          };
+          this.latestHistorySyncStats = stats;
+          const listeners = [...this.historySyncListeners];
+          for (const listener of listeners) {
+            try {
+              listener(stats);
+            } catch {
+              // Safe listener execution
+            }
+          }
+        });
+      }
     } catch {
       this.state = 'ERROR';
       if (this.socket) {
@@ -409,5 +447,19 @@ export class BaileysConnectionManager
       throw new Error('WHATSAPP_NOT_CONNECTED');
     }
     return this.socket.sendMessage(jid, content);
+  }
+
+  onHistorySync(listener: (stats: WhatsAppHistorySyncStats) => void): () => void {
+    this.historySyncListeners.push(listener);
+    return () => {
+      const idx = this.historySyncListeners.indexOf(listener);
+      if (idx !== -1) {
+        this.historySyncListeners.splice(idx, 1);
+      }
+    };
+  }
+
+  getHistorySyncStats(): WhatsAppHistorySyncStats | null {
+    return this.latestHistorySyncStats;
   }
 }

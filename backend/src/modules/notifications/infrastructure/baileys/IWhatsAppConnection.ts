@@ -1,7 +1,8 @@
 import {
   IBaileysMessageSender,
   WhatsAppConnectionState,
-  WhatsAppDisconnectReason
+  WhatsAppDisconnectReason,
+  WhatsAppHistorySyncStats
 } from './BaileysTypes';
 
 export interface WaitForAuthPersistenceOptions {
@@ -20,4 +21,6 @@ export interface IWhatsAppConnection {
   close(options?: CloseWhatsAppConnectionOptions): Promise<void>;
   getMessageSender(): IBaileysMessageSender | null;
   waitForAuthPersistence?(options?: WaitForAuthPersistenceOptions): Promise<void>;
+  onHistorySync?(listener: (stats: WhatsAppHistorySyncStats) => void): () => void;
+  getHistorySyncStats?(): WhatsAppHistorySyncStats | null;
 }

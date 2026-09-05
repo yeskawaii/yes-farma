@@ -48,6 +48,28 @@ export interface IBaileysMessageSender {
   sendMessage(jid: string, content: { text: string }): Promise<BaileysSendResult | null | undefined>;
 }
 
+export interface BaileysMessagingHistorySetEvent {
+  chats?: unknown[];
+  contacts?: unknown[];
+  messages?: unknown[];
+  lidPnMappings?: unknown[];
+  isLatest?: boolean;
+  progress?: number | null;
+  syncType?: number | string | null;
+}
+
+export interface WhatsAppHistorySyncStats {
+  eventReceived: boolean;
+  eventsCount: number;
+  syncType: number | string | null;
+  progress: number | null;
+  isLatest: boolean;
+  lidPnMappingsCount: number;
+  chatsCount: number;
+  contactsCount: number;
+  messagesCount: number;
+}
+
 export interface IBaileysSocketEvents {
   on(event: 'connection.update', listener: (update: Partial<ConnectionState>) => void): void;
   on(event: 'creds.update', listener: (creds: Partial<AuthenticationCreds>) => void): void;
@@ -63,6 +85,7 @@ export interface IBaileysSocketInstance {
 export interface BaileysSocketFactoryOptions {
   auth: AuthenticationState;
   logger?: any | undefined;
+  syncFullHistory?: boolean | undefined;
 }
 
 export interface IBaileysSocketFactory {

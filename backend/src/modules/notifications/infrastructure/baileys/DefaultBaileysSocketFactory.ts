@@ -22,13 +22,17 @@ export class DefaultBaileysSocketFactory implements IBaileysSocketFactory {
     const version = await this.webVersionProvider.getCurrentVersion();
     const logger = options.logger ?? this.createLogger();
     const baileysModule = await import('@whiskeysockets/baileys');
-    const makeWASocket = baileysModule.default ?? baileysModule.makeWASocket;
-    const sock = makeWASocket({
+    const socketOptions: Record<string, any> = {
       auth: options.auth,
       version,
       printQRInTerminal: false,
       logger
-    });
+    };
+    if (options.syncFullHistory !== undefined) {
+      socketOptions.syncFullHistory = options.syncFullHistory;
+    }
+    const makeWASocket = baileysModule.default ?? baileysModule.makeWASocket;
+    const sock = makeWASocket(socketOptions as any);
     return sock as unknown as IBaileysSocketInstance;
   }
 }

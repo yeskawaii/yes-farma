@@ -18,6 +18,7 @@ export interface WhatsAppRuntimeOptions {
   onSendAttempt?: (() => void) | undefined;
   recipientResolver?: IWhatsAppRecipientResolver | undefined;
   webVersionProvider?: IWhatsAppWebVersionProvider | undefined;
+  syncFullHistory?: boolean | undefined;
 }
 
 export interface WhatsAppRuntime {
@@ -38,7 +39,9 @@ export const createWhatsAppRuntime = (options: WhatsAppRuntimeOptions): WhatsApp
   const socketFactory =
     options.socketFactory ??
     new DefaultBaileysSocketFactory(options.webVersionProvider);
-  const connection = new BaileysConnectionManager(authStateStore, socketFactory);
+  const connection = new BaileysConnectionManager(authStateStore, socketFactory, {
+    syncFullHistory: options.syncFullHistory
+  });
   const recipientResolver = options.recipientResolver ?? new BaileysRecipientResolver(connection);
   const delivery = new BaileysNotificationDeliveryAdapter(connection, {
     recipientResolver,
