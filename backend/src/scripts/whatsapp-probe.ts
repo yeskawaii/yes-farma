@@ -1,6 +1,7 @@
 import { createWhatsAppRuntime } from '../modules/notifications/infrastructure/baileys/createWhatsAppRuntime';
 import { WhatsAppProbeRunner } from '../modules/notifications/infrastructure/baileys/WhatsAppProbeRunner';
 import { resolveOperatorAuthDir } from '../modules/notifications/infrastructure/baileys/resolveOperatorAuthDir';
+import { terminateCli } from './cliTerminationHelper';
 
 export const parseProbeArgs = () => {
   const args = process.argv.slice(2);
@@ -33,33 +34,52 @@ export const parseProbeArgs = () => {
   return { authDir, timeoutMs: timeoutSeconds * 1000 };
 };
 
-const main = async () => {
-  const { authDir, timeoutMs } = parseProbeArgs();
+export const main = async (deps?: {
+  runtime?: ReturnType<typeof createWhatsAppRuntime>;
+  parseArgs?: typeof parseProbeArgs;
+}): Promise<number> => {
+  let runtime: ReturnType<typeof createWhatsAppRuntime> | undefined;
+  let exitCode = 1;
 
-  console.log('Initiating WhatsApp connection probe...');
-  const runtime = createWhatsAppRuntime({
-    authDir,
-    requireAbsoluteAuthDir: true
-  });
+  try {
+    const { authDir, timeoutMs } = deps?.parseArgs ? deps.parseArgs() : parseProbeArgs();
 
-  const runner = new WhatsAppProbeRunner({
-    connection: runtime.connection,
-    timeoutMs,
-    registerSignalHandlers: true
-  });
+    console.log('Initiating WhatsApp connection probe...');
+    runtime = deps?.runtime ?? createWhatsAppRuntime({
+      authDir,
+      requireAbsoluteAuthDir: true
+    });
 
-  const result = await runner.run();
+    const runner = new WhatsAppProbeRunner({
+      connection: runtime.connection,
+      timeoutMs,
+      registerSignalHandlers: true
+    });
 
-  if (result.status === 'PASS') {
-    process.exitCode = 0;
-  } else {
-    process.exitCode = 1;
+    const result = await runner.run();
+    exitCode = result.status === 'PASS' ? 0 : 1;
+  } catch (err) {
+    console.error('Fatal error during WhatsApp probe:', err instanceof Error ? err.message : err);
+    exitCode = 1;
+  } finally {
+    if (runtime) {
+      try {
+        await runtime.connection.close();
+      } catch (cleanupErr) {
+        console.error('Final cleanup error during WhatsApp probe:', cleanupErr instanceof Error ? cleanupErr.message : cleanupErr);
+        exitCode = 1;
+      }
+    }
   }
+
+  return exitCode;
 };
 
 if (process.env.NODE_ENV !== 'test') {
-  main().catch((err) => {
-    console.error('Fatal error during WhatsApp probe:', err instanceof Error ? err.message : err);
-    process.exitCode = 1;
-  });
+  main()
+    .then((code) => terminateCli(code))
+    .catch((err) => {
+      console.error('Fatal CLI error:', err instanceof Error ? err.message : err);
+      terminateCli(1);
+    });
 }

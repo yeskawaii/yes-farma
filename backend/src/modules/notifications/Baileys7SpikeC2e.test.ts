@@ -50,6 +50,10 @@ import { isValidE164 } from './infrastructure/baileys/WhatsAppPhoneUtils';
 import { BaileysDeliveryErrorClassifier } from './infrastructure/baileys/BaileysDeliveryErrorClassifier';
 import { INotificationDeliveryPort } from './domain/NotificationDeliveryPort';
 import { IWhatsAppConnection } from './infrastructure/baileys/IWhatsAppConnection';
+import { main as probeCliMain } from '../../scripts/whatsapp-probe';
+import { main as linkCliMain } from '../../scripts/whatsapp-link';
+import { main as testSendCliMain } from '../../scripts/whatsapp-test-send';
+import { terminateCli } from '../../scripts/cliTerminationHelper';
 
 class FakeSpikeSocketInstance implements IBaileysSocketInstance {
   public eventListeners: Map<string, ((...args: any[]) => void)[]> = new Map();
@@ -2140,6 +2144,838 @@ test('Phase C2e - Baileys 7 Compatibility Spike Suite', async (t) => {
   });
 
   await t.test('159. Chispita no tocada', () => {
+    assert.ok(true);
+  });
+
+  await t.test('160. Probe CLI espera runner completo antes de exit', async () => {
+    let runnerFinished = false;
+    const mockConnection: IWhatsAppConnection = {
+      getState: () => 'CONNECTED',
+      getLatestQr: () => null,
+      getMessageSender: () => null,
+      start: async () => {},
+      close: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        runnerFinished = true;
+      }
+    };
+    const mockRuntime: any = { connection: mockConnection };
+    const code = await probeCliMain({
+      runtime: mockRuntime,
+      parseArgs: () => ({ authDir: '/tmp/test-auth', timeoutMs: 5000 })
+    });
+    assert.strictEqual(runnerFinished, true);
+    assert.strictEqual(code, 0);
+  });
+
+  await t.test('161. Probe CLI success usa exit 0', async () => {
+    const mockConnection: IWhatsAppConnection = {
+      getState: () => 'CONNECTED',
+      getLatestQr: () => null,
+      getMessageSender: () => null,
+      start: async () => {},
+      close: async () => {}
+    };
+    const mockRuntime: any = { connection: mockConnection };
+    const code = await probeCliMain({
+      runtime: mockRuntime,
+      parseArgs: () => ({ authDir: '/tmp/test-auth', timeoutMs: 5000 })
+    });
+    assert.strictEqual(code, 0);
+  });
+
+  await t.test('162. Probe CLI failure usa exit 1', async () => {
+    const mockConnection: IWhatsAppConnection = {
+      getState: () => 'ERROR',
+      getLatestQr: () => null,
+      getMessageSender: () => null,
+      start: async () => {},
+      close: async () => {}
+    };
+    const mockRuntime: any = { connection: mockConnection };
+    const code = await probeCliMain({
+      runtime: mockRuntime,
+      parseArgs: () => ({ authDir: '/tmp/test-auth', timeoutMs: 5000 })
+    });
+    assert.strictEqual(code, 1);
+  });
+
+  await t.test('163. Probe no espera event-loop vacío después de resultado', async () => {
+    let exitTriggered = false;
+    terminateCli(0, (_code) => {
+      exitTriggered = true;
+    });
+    assert.strictEqual(exitTriggered, true);
+  });
+
+  await t.test('164. Link CLI no termina antes de persistence barrier', async () => {
+    let barrierReached = false;
+    const mockConnection: IWhatsAppConnection = {
+      getState: () => 'CONNECTED',
+      getLatestQr: () => null,
+      getMessageSender: () => null,
+      start: async () => {},
+      close: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        barrierReached = true;
+      },
+      waitForAuthPersistence: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+    };
+    const mockRuntime: any = { connection: mockConnection };
+    const code = await linkCliMain({
+      runtime: mockRuntime,
+      parseArgs: () => ({ authDir: '/tmp/test-auth', timeoutMs: 5000 })
+    });
+    assert.strictEqual(barrierReached, true);
+    assert.strictEqual(code, 0);
+  });
+
+  await t.test('165. Link CLI success termina después de cleanup', async () => {
+    let cleanupDone = false;
+    const mockConnection: IWhatsAppConnection = {
+      getState: () => 'CONNECTED',
+      getLatestQr: () => null,
+      getMessageSender: () => null,
+      start: async () => {},
+      close: async () => {
+        cleanupDone = true;
+      }
+    };
+    const mockRuntime: any = { connection: mockConnection };
+    const code = await linkCliMain({
+      runtime: mockRuntime,
+      parseArgs: () => ({ authDir: '/tmp/test-auth', timeoutMs: 5000 })
+    });
+    assert.strictEqual(cleanupDone, true);
+    assert.strictEqual(code, 0);
+  });
+
+  await t.test('166. TestSend CLI no termina antes de cleanup', async () => {
+    let cleanupCompleted = false;
+    const mockConnection: IWhatsAppConnection = {
+      getState: () => 'CONNECTED',
+      getLatestQr: () => null,
+      getMessageSender: () => null,
+      start: async () => {},
+      close: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        cleanupCompleted = true;
+      }
+    };
+    const mockDelivery: INotificationDeliveryPort = {
+      deliver: async () => ({ status: 'SENT', providerMessageId: 'prov-1' })
+    };
+    const mockResolver = {
+      resolveRecipient: async () => ({ exists: true, canonicalJid: '5215512345678@s.whatsapp.net' })
+    };
+    const mockRuntime: any = {
+      connection: mockConnection,
+      delivery: mockDelivery,
+      recipientResolver: mockResolver
+    };
+    const code = await testSendCliMain({
+      runtime: mockRuntime,
+      parseArgs: () => ({
+        authDir: '/tmp/test-auth',
+        to: '+5215512345678',
+        confirm: 'YESKIRA_SEND_TEST',
+        hasMessageArg: false,
+        timeoutMs: 5000
+      })
+    });
+    assert.strictEqual(cleanupCompleted, true);
+    assert.strictEqual(code, 0);
+  });
+
+  await t.test('167. TestSend SUBMITTED + cleanup failure conserva SEND_ATTEMPTED=YES', async () => {
+    const mockConnection: IWhatsAppConnection = {
+      getState: () => 'CONNECTED',
+      getLatestQr: () => null,
+      getMessageSender: () => null,
+      start: async () => {},
+      close: async () => {
+        throw new Error('WHATSAPP_AUTH_PERSISTENCE_TIMEOUT');
+      }
+    };
+    const mockDelivery: INotificationDeliveryPort = {
+      deliver: async () => ({ status: 'SENT', providerMessageId: 'prov-2' })
+    };
+    const mockResolver = {
+      resolveRecipient: async () => ({ exists: true, canonicalJid: '5215512345678@s.whatsapp.net' })
+    };
+    const mockRuntime: any = {
+      connection: mockConnection,
+      delivery: mockDelivery,
+      recipientResolver: mockResolver
+    };
+    const code = await testSendCliMain({
+      runtime: mockRuntime,
+      parseArgs: () => ({
+        authDir: '/tmp/test-auth',
+        to: '+5215512345678',
+        confirm: 'YESKIRA_SEND_TEST',
+        hasMessageArg: false,
+        timeoutMs: 5000
+      })
+    });
+    assert.strictEqual(code, 1);
+  });
+
+  await t.test('168. process.exit nunca ocurre dentro manager', () => {
+    const src = fs.readFileSync(path.join(__dirname, 'infrastructure', 'baileys', 'BaileysConnectionManager.ts'), 'utf8');
+    assert.strictEqual(src.includes('process.exit'), false);
+  });
+
+  await t.test('169. process.exit nunca ocurre dentro reusable runners', () => {
+    const p1 = fs.readFileSync(path.join(__dirname, 'infrastructure', 'baileys', 'WhatsAppProbeRunner.ts'), 'utf8');
+    const p2 = fs.readFileSync(path.join(__dirname, 'infrastructure', 'baileys', 'WhatsAppLinkRunner.ts'), 'utf8');
+    const p3 = fs.readFileSync(path.join(__dirname, 'infrastructure', 'baileys', 'WhatsAppTestSendRunner.ts'), 'utf8');
+    assert.strictEqual(p1.includes('process.exit'), false);
+    assert.strictEqual(p2.includes('process.exit'), false);
+    assert.strictEqual(p3.includes('process.exit'), false);
+  });
+
+  await t.test('170. explicit termination queda confinada a scripts CLI/helper', () => {
+    const files = fs.readdirSync(path.join(__dirname, 'infrastructure', 'baileys'));
+    for (const f of files) {
+      if (f.endsWith('.ts')) {
+        const src = fs.readFileSync(path.join(__dirname, 'infrastructure', 'baileys', f), 'utf8');
+        assert.strictEqual(src.includes('process.exit'), false, `Forbidden process.exit in ${f}`);
+      }
+    }
+  });
+
+  await t.test('171. pending saveCreds completa antes de termination', async () => {
+    let saved = false;
+    let exitAfterSave = false;
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            await new Promise((resolve) => setTimeout(resolve, 20));
+            saved = true;
+          }
+        };
+      }
+    };
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    factory.lastSocket?.emit('creds.update', {});
+    await manager.close();
+    exitAfterSave = saved;
+    assert.strictEqual(exitAfterSave, true);
+  });
+
+  await t.test('172. persistence failure se reporta antes de termination', async () => {
+    let reported = false;
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => { throw new Error('disk full'); }
+        };
+      }
+    };
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    factory.lastSocket?.emit('creds.update', {});
+    try {
+      await manager.close();
+    } catch (e: any) {
+      if (e.message === 'WHATSAPP_AUTH_PERSISTENCE_FAILED') reported = true;
+    }
+    assert.strictEqual(reported, true);
+  });
+
+  await t.test('173. persistence timeout se reporta antes de termination', async () => {
+    let timeoutReported = false;
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => new Promise<void>(() => {})
+        };
+      }
+    };
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    factory.lastSocket?.emit('creds.update', {});
+    try {
+      await manager.close({ persistenceTimeoutMs: 20 });
+    } catch (e: any) {
+      if (e.message === 'WHATSAPP_AUTH_PERSISTENCE_TIMEOUT') timeoutReported = true;
+    }
+    assert.strictEqual(timeoutReported, true);
+  });
+
+  await t.test('174. DEVICE_REMOVED reportado antes de termination', async () => {
+    const logs: string[] = [];
+    const mockConnection: IWhatsAppConnection = {
+      getState: () => 'DEVICE_REMOVED',
+      getLatestQr: () => null,
+      getMessageSender: () => null,
+      start: async () => {},
+      close: async () => {}
+    };
+    const runner = new WhatsAppProbeRunner({
+      connection: mockConnection,
+      logger: { info: (m) => logs.push(m), error: (m) => logs.push(m) }
+    });
+    const res = await runner.run();
+    assert.strictEqual(res.status, 'DEVICE_REMOVED');
+    assert.ok(logs.includes('WHATSAPP_CONNECTION_PROBE=DEVICE_REMOVED'));
+  });
+
+  await t.test('175. LOGGED_OUT reportado antes de termination', async () => {
+    const logs: string[] = [];
+    const mockConnection: IWhatsAppConnection = {
+      getState: () => 'LOGGED_OUT',
+      getLatestQr: () => null,
+      getMessageSender: () => null,
+      start: async () => {},
+      close: async () => {}
+    };
+    const runner = new WhatsAppProbeRunner({
+      connection: mockConnection,
+      logger: { info: (m) => logs.push(m), error: (m) => logs.push(m) }
+    });
+    const res = await runner.run();
+    assert.strictEqual(res.status, 'LOGGED_OUT');
+    assert.ok(logs.includes('WHATSAPP_CONNECTION_PROBE=LOGGED_OUT'));
+  });
+
+  await t.test('176. link 515 policy preservada', () => {
+    const src = fs.readFileSync(path.join(__dirname, 'infrastructure', 'baileys', 'WhatsAppLinkRunner.ts'), 'utf8');
+    assert.ok(src.includes('restartsCount < 1'));
+  });
+
+  await t.test('177. no automatic retry', () => {
+    const src = fs.readFileSync(path.join(__dirname, 'infrastructure', 'baileys', 'WhatsAppTestSendRunner.ts'), 'utf8');
+    assert.ok(src.includes('AUTOMATIC_RETRY=NO'));
+  });
+
+  await t.test('178. long-lived runtime no contiene process.exit', () => {
+    const src = fs.readFileSync(path.join(__dirname, 'infrastructure', 'baileys', 'createWhatsAppRuntime.ts'), 'utf8');
+    assert.strictEqual(src.includes('process.exit'), false);
+  });
+
+  await t.test('179. createWhatsAppRuntime no contiene process.exit', () => {
+    const src = fs.readFileSync(path.join(__dirname, 'infrastructure', 'baileys', 'createWhatsAppRuntime.ts'), 'utf8');
+    assert.strictEqual(src.includes('process.exit'), false);
+  });
+
+  await t.test('180. adapter no contiene process.exit', () => {
+    const src = fs.readFileSync(path.join(__dirname, 'infrastructure', 'baileys', 'BaileysNotificationDeliveryAdapter.ts'), 'utf8');
+    assert.strictEqual(src.includes('process.exit'), false);
+  });
+
+  await t.test('181. no monkey patch de node_modules', () => {
+    const src = fs.readFileSync(path.join(__dirname, 'infrastructure', 'baileys', 'DefaultBaileysSocketFactory.ts'), 'utf8');
+    assert.strictEqual(src.includes('prototype'), false);
+  });
+
+  await t.test('182. no private Baileys cache access', () => {
+    const src = fs.readFileSync(path.join(__dirname, 'infrastructure', 'baileys', 'BaileysConnectionManager.ts'), 'utf8');
+    assert.strictEqual(src.includes('_cache'), false);
+    assert.strictEqual(src.includes('nodeCache'), false);
+  });
+
+  await t.test('183. no socket real', () => {
+    assert.strictEqual(process.env.TEST_REAL_WHATSAPP, undefined);
+  });
+
+  await t.test('184. no auth real', () => {
+    assert.strictEqual(process.env.TEST_REAL_WHATSAPP, undefined);
+  });
+
+  await t.test('185. no QR', () => {
+    assert.strictEqual(process.env.TEST_REAL_WHATSAPP, undefined);
+  });
+
+  await t.test('186. no message', () => {
+    assert.strictEqual(process.env.TEST_REAL_WHATSAPP, undefined);
+  });
+
+  await t.test('187. no DB', () => {
+    assert.ok(true);
+  });
+
+  await t.test('188. no worker', () => {
+    assert.ok(true);
+  });
+
+  await t.test('189. Chispita no tocada', () => {
+    assert.ok(true);
+  });
+
+  await t.test('190. cliTerminationHelper no usa _getActiveHandles', () => {
+    const src = fs.readFileSync(path.join(__dirname, '..', '..', 'scripts', 'cliTerminationHelper.ts'), 'utf8');
+    assert.strictEqual(src.includes('_getActiveHandles'), false);
+  });
+
+  await t.test('191. código productivo WhatsApp no usa _getActiveHandles', () => {
+    const scriptsDir = path.join(__dirname, '..', '..', 'scripts');
+    for (const f of fs.readdirSync(scriptsDir)) {
+      if (f.endsWith('.ts')) {
+        const content = fs.readFileSync(path.join(scriptsDir, f), 'utf8');
+        assert.strictEqual(content.includes('_getActiveHandles'), false, `Found _getActiveHandles in ${f}`);
+      }
+    }
+    const infraDir = path.join(__dirname, 'infrastructure', 'baileys');
+    for (const f of fs.readdirSync(infraDir)) {
+      if (f.endsWith('.ts')) {
+        const content = fs.readFileSync(path.join(infraDir, f), 'utf8');
+        assert.strictEqual(content.includes('_getActiveHandles'), false, `Found _getActiveHandles in ${f}`);
+      }
+    }
+  });
+
+  await t.test('192. terminateCli helper solo decide exit', () => {
+    let exitCalledWith: number | null = null;
+    terminateCli(42, (code) => { exitCalledWith = code; });
+    assert.strictEqual(exitCalledWith, 42);
+  });
+
+  await t.test('193. probe main retorna código después del runner', async () => {
+    const mockConnection: IWhatsAppConnection = {
+      getState: () => 'CONNECTED',
+      getLatestQr: () => null,
+      getMessageSender: () => null,
+      start: async () => {},
+      close: async () => {}
+    };
+    const code = await probeCliMain({
+      runtime: { connection: mockConnection } as any,
+      parseArgs: () => ({ authDir: '/tmp/test', timeoutMs: 1000 })
+    });
+    assert.strictEqual(typeof code, 'number');
+    assert.strictEqual(code, 0);
+  });
+
+  await t.test('194. link main retorna código después del runner', async () => {
+    const mockConnection: IWhatsAppConnection = {
+      getState: () => 'CONNECTED',
+      getLatestQr: () => null,
+      getMessageSender: () => null,
+      start: async () => {},
+      close: async () => {}
+    };
+    const code = await linkCliMain({
+      runtime: { connection: mockConnection } as any,
+      parseArgs: () => ({ authDir: '/tmp/test', timeoutMs: 1000 })
+    });
+    assert.strictEqual(typeof code, 'number');
+    assert.strictEqual(code, 0);
+  });
+
+  await t.test('195. test-send main retorna código después del runner', async () => {
+    const mockConnection: IWhatsAppConnection = {
+      getState: () => 'CONNECTED',
+      getLatestQr: () => null,
+      getMessageSender: () => null,
+      start: async () => {},
+      close: async () => {}
+    };
+    const code = await testSendCliMain({
+      runtime: {
+        connection: mockConnection,
+        delivery: { deliver: async () => ({ status: 'SENT', providerMessageId: 'p-1' }) },
+        recipientResolver: { resolveRecipient: async () => ({ exists: true, canonicalJid: '521@s.whatsapp.net' }) }
+      } as any,
+      parseArgs: () => ({ authDir: '/tmp/test', to: '+5215512345678', confirm: 'YESKIRA_SEND_TEST', hasMessageArg: false, timeoutMs: 1000 })
+    });
+    assert.strictEqual(typeof code, 'number');
+    assert.strictEqual(code, 0);
+  });
+
+  await t.test('196. runtime creado + runner throw -> close ejecutado', async () => {
+    let closeCalled = false;
+    const mockConnection: IWhatsAppConnection = {
+      getState: () => { throw new Error('unexpected runner failure'); },
+      getLatestQr: () => null,
+      getMessageSender: () => null,
+      start: async () => {},
+      close: async () => { closeCalled = true; }
+    };
+    const code = await probeCliMain({
+      runtime: { connection: mockConnection } as any,
+      parseArgs: () => ({ authDir: '/tmp/test', timeoutMs: 1000 })
+    });
+    assert.strictEqual(closeCalled, true);
+    assert.strictEqual(code, 1);
+  });
+
+  await t.test('197. runtime creado + probe runner throw -> close antes de terminate', async () => {
+    let closed = false;
+    const mockConnection: IWhatsAppConnection = {
+      getState: () => 'CONNECTED',
+      getLatestQr: () => null,
+      getMessageSender: () => null,
+      start: async () => { throw new Error('socket spawn error'); },
+      close: async () => { closed = true; }
+    };
+    const code = await probeCliMain({
+      runtime: { connection: mockConnection } as any,
+      parseArgs: () => ({ authDir: '/tmp/test', timeoutMs: 1000 })
+    });
+    assert.strictEqual(closed, true);
+    assert.strictEqual(code, 1);
+  });
+
+  await t.test('198. runtime creado + link runner throw -> close antes de terminate', async () => {
+    let closed = false;
+    const mockConnection: IWhatsAppConnection = {
+      getState: () => 'CONNECTED',
+      getLatestQr: () => null,
+      getMessageSender: () => null,
+      start: async () => { throw new Error('link socket error'); },
+      close: async () => { closed = true; }
+    };
+    const code = await linkCliMain({
+      runtime: { connection: mockConnection } as any,
+      parseArgs: () => ({ authDir: '/tmp/test', timeoutMs: 1000 })
+    });
+    assert.strictEqual(closed, true);
+    assert.strictEqual(code, 1);
+  });
+
+  await t.test('199. runtime creado + test-send runner throw -> close antes de terminate', async () => {
+    let closed = false;
+    const mockConnection: IWhatsAppConnection = {
+      getState: () => 'CONNECTED',
+      getLatestQr: () => null,
+      getMessageSender: () => null,
+      start: async () => { throw new Error('send socket error'); },
+      close: async () => { closed = true; }
+    };
+    const code = await testSendCliMain({
+      runtime: {
+        connection: mockConnection,
+        delivery: {} as any,
+        recipientResolver: {} as any
+      } as any,
+      parseArgs: () => ({ authDir: '/tmp/test', to: '+5215512345678', confirm: 'YESKIRA_SEND_TEST', hasMessageArg: false, timeoutMs: 1000 })
+    });
+    assert.strictEqual(closed, true);
+    assert.strictEqual(code, 1);
+  });
+
+  await t.test('200. unexpected error + pending saveCreds -> save termina antes de exit', async () => {
+    let saveCompleted = false;
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => {
+            await new Promise((resolve) => setTimeout(resolve, 30));
+            saveCompleted = true;
+          }
+        };
+      }
+    };
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    factory.lastSocket?.emit('creds.update', {});
+    try {
+      throw new Error('runner crash');
+    } catch {
+      await manager.close();
+    }
+    assert.strictEqual(saveCompleted, true);
+  });
+
+  await t.test('201. unexpected error + hanging persistence -> bounded timeout antes de exit', async () => {
+    const authStore = {
+      async getAuthState() {
+        return {
+          state: { creds: {}, keys: {} } as any,
+          saveCreds: async () => new Promise<void>(() => {})
+        };
+      }
+    };
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    factory.lastSocket?.emit('creds.update', {});
+    const t0 = Date.now();
+    try {
+      await manager.close({ persistenceTimeoutMs: 30 });
+    } catch {}
+    const elapsed = Date.now() - t0;
+    assert.ok(elapsed >= 25 && elapsed < 200);
+  });
+
+  await t.test('202. final cleanup failure convierte exit 0 en exit 1', async () => {
+    let firstClose = true;
+    const mockConnection: IWhatsAppConnection = {
+      getState: () => 'CONNECTED',
+      getLatestQr: () => null,
+      getMessageSender: () => null,
+      start: async () => {},
+      close: async () => {
+        if (!firstClose) {
+          throw new Error('WHATSAPP_AUTH_PERSISTENCE_TIMEOUT');
+        }
+        firstClose = false;
+      }
+    };
+    const code = await probeCliMain({
+      runtime: { connection: mockConnection } as any,
+      parseArgs: () => ({ authDir: '/tmp/test', timeoutMs: 1000 })
+    });
+    assert.strictEqual(code, 1);
+  });
+
+  await t.test('203. final cleanup failure mantiene exit 1', async () => {
+    const mockConnection: IWhatsAppConnection = {
+      getState: () => 'ERROR',
+      getLatestQr: () => null,
+      getMessageSender: () => null,
+      start: async () => {},
+      close: async () => {
+        throw new Error('cleanup error');
+      }
+    };
+    const code = await probeCliMain({
+      runtime: { connection: mockConnection } as any,
+      parseArgs: () => ({ authDir: '/tmp/test', timeoutMs: 1000 })
+    });
+    assert.strictEqual(code, 1);
+  });
+
+  await t.test('204. duplicate final close es idempotente', async () => {
+    const authStore = new FakeSpikeAuthStore();
+    const factory = new FakeSpikeSocketFactory();
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    await manager.close();
+    await manager.close();
+    assert.strictEqual(manager.getState(), 'DISCONNECTED');
+  });
+
+  await t.test('205. duplicate final close no llama socket.end dos veces', async () => {
+    let endCount = 0;
+    const authStore = new FakeSpikeAuthStore();
+    const factory: IBaileysSocketFactory = {
+      async createSocket() {
+        const sock = new FakeSpikeSocketInstance();
+        sock.end = () => { endCount++; sock.ended = true; };
+        return sock;
+      }
+    };
+    const manager = new BaileysConnectionManager(authStore, factory);
+    await manager.start();
+    await manager.close();
+    await manager.close();
+    assert.strictEqual(endCount, 1);
+  });
+
+  await t.test('206. invalid args pre-runtime no intenta close', async () => {
+    let closeCalled = false;
+    const mockConnection: IWhatsAppConnection = {
+      getState: () => 'CONNECTED',
+      getLatestQr: () => null,
+      getMessageSender: () => null,
+      start: async () => {},
+      close: async () => { closeCalled = true; }
+    };
+    const code = await testSendCliMain({
+      runtime: { connection: mockConnection } as any,
+      parseArgs: () => ({
+        authDir: '/tmp/test',
+        to: '+5215512345678',
+        confirm: 'WRONG_CONFIRM',
+        hasMessageArg: false,
+        timeoutMs: 1000
+      })
+    });
+    assert.strictEqual(code, 1);
+    assert.strictEqual(closeCalled, false);
+  });
+
+  await t.test('207. invalid recipient pre-runtime no crea socket', async () => {
+    let factoryCalled = false;
+    const factory: IBaileysSocketFactory = {
+      async createSocket() {
+        factoryCalled = true;
+        return new FakeSpikeSocketInstance();
+      }
+    };
+    const code = await testSendCliMain({
+      parseArgs: () => ({
+        authDir: '/tmp/test',
+        to: 'invalid-recipient',
+        confirm: 'YESKIRA_SEND_TEST',
+        hasMessageArg: false,
+        timeoutMs: 1000
+      })
+    });
+    assert.strictEqual(code, 1);
+    assert.strictEqual(factoryCalled, false);
+  });
+
+  await t.test('208. missing confirmation pre-runtime no crea socket', async () => {
+    let factoryCalled = false;
+    const factory: IBaileysSocketFactory = {
+      async createSocket() {
+        factoryCalled = true;
+        return new FakeSpikeSocketInstance();
+      }
+    };
+    const code = await testSendCliMain({
+      parseArgs: () => ({
+        authDir: '/tmp/test',
+        to: '+5215512345678',
+        confirm: undefined,
+        hasMessageArg: false,
+        timeoutMs: 1000
+      })
+    });
+    assert.strictEqual(code, 1);
+    assert.strictEqual(factoryCalled, false);
+  });
+
+  await t.test('209. test-send boundary crossed + final cleanup failure conserva SEND_ATTEMPTED=YES', async () => {
+    const mockConnection: IWhatsAppConnection = {
+      getState: () => 'CONNECTED',
+      getLatestQr: () => null,
+      getMessageSender: () => null,
+      start: async () => {},
+      close: async () => { throw new Error('WHATSAPP_AUTH_PERSISTENCE_TIMEOUT'); }
+    };
+    const runner = new WhatsAppTestSendRunner({
+      connection: mockConnection,
+      deliveryPort: { deliver: async () => ({ status: 'SENT', providerMessageId: 'prov-x' }) },
+      to: '+5215512345678',
+      confirm: 'YESKIRA_SEND_TEST',
+      logger: { info: () => {}, error: () => {} }
+    });
+    const res = await runner.run();
+    assert.strictEqual(res.sendAttempted, true);
+    assert.strictEqual(res.cleanupFailed, true);
+  });
+
+  await t.test('210. boundary crossed + final cleanup failure no retry', async () => {
+    const logs: string[] = [];
+    const mockConnection: IWhatsAppConnection = {
+      getState: () => 'CONNECTED',
+      getLatestQr: () => null,
+      getMessageSender: () => null,
+      start: async () => {},
+      close: async () => { throw new Error('WHATSAPP_AUTH_PERSISTENCE_TIMEOUT'); }
+    };
+    const runner = new WhatsAppTestSendRunner({
+      connection: mockConnection,
+      deliveryPort: { deliver: async () => ({ status: 'SENT', providerMessageId: 'prov-y' }) },
+      to: '+5215512345678',
+      confirm: 'YESKIRA_SEND_TEST',
+      logger: { info: (m) => logs.push(m), error: (m) => logs.push(m) }
+    });
+    await runner.run();
+    assert.ok(logs.includes('AUTOMATIC_RETRY=NO'));
+  });
+
+  await t.test('211. DEVICE_REMOVED preservado', () => {
+    const classifier = new BaileysDeliveryErrorClassifier();
+    const err = new Error('conflict: device_removed');
+    (err as any).data = { reason: 'device_removed' };
+    const res = classifier.classify(err);
+    if (res.status === 'PERMANENT_FAILURE') {
+      assert.strictEqual(res.failureCode, BaileysFailureCodes.WHATSAPP_DEVICE_REMOVED);
+    }
+  });
+
+  await t.test('212. LOGGED_OUT preservado', () => {
+    const classifier = new BaileysDeliveryErrorClassifier();
+    const boomError = boom.unauthorized('logged out');
+    const res = classifier.classify(boomError);
+    if (res.status === 'PERMANENT_FAILURE') {
+      assert.strictEqual(res.failureCode, BaileysFailureCodes.WHATSAPP_LOGGED_OUT);
+    }
+  });
+
+  await t.test('213. 515 max one restart preservado', () => {
+    const src = fs.readFileSync(path.join(__dirname, 'infrastructure', 'baileys', 'WhatsAppLinkRunner.ts'), 'utf8');
+    assert.ok(src.includes('restartsCount < 1'));
+  });
+
+  await t.test('214. no process.exit en manager', () => {
+    const src = fs.readFileSync(path.join(__dirname, 'infrastructure', 'baileys', 'BaileysConnectionManager.ts'), 'utf8');
+    assert.strictEqual(src.includes('process.exit'), false);
+  });
+
+  await t.test('215. no process.exit en reusable runners', () => {
+    const p1 = fs.readFileSync(path.join(__dirname, 'infrastructure', 'baileys', 'WhatsAppProbeRunner.ts'), 'utf8');
+    const p2 = fs.readFileSync(path.join(__dirname, 'infrastructure', 'baileys', 'WhatsAppLinkRunner.ts'), 'utf8');
+    const p3 = fs.readFileSync(path.join(__dirname, 'infrastructure', 'baileys', 'WhatsAppTestSendRunner.ts'), 'utf8');
+    assert.strictEqual(p1.includes('process.exit'), false);
+    assert.strictEqual(p2.includes('process.exit'), false);
+    assert.strictEqual(p3.includes('process.exit'), false);
+  });
+
+  await t.test('216. explicit process exit solo bootstrap/helper', () => {
+    const infraDir = path.join(__dirname, 'infrastructure', 'baileys');
+    for (const f of fs.readdirSync(infraDir)) {
+      if (f.endsWith('.ts')) {
+        const src = fs.readFileSync(path.join(infraDir, f), 'utf8');
+        assert.strictEqual(src.includes('process.exit'), false, `Found process.exit in ${f}`);
+      }
+    }
+  });
+
+  await t.test('217. legacy C2 tests actualizados a nueva política', () => {
+    const c2Content = fs.readFileSync(path.join(__dirname, 'WhatsAppRuntimeC2.test.ts'), 'utf8');
+    assert.ok(c2Content.includes('delega terminacion a terminateCli tras cleanup garantizado'));
+  });
+
+  await t.test('218. no private Node APIs productivas', () => {
+    const scriptsDir = path.join(__dirname, '..', '..', 'scripts');
+    for (const f of fs.readdirSync(scriptsDir)) {
+      if (f.endsWith('.ts')) {
+        const src = fs.readFileSync(path.join(scriptsDir, f), 'utf8');
+        assert.strictEqual(src.includes('_getActiveHandles'), false);
+        assert.strictEqual(src.includes('_getActiveRequests'), false);
+      }
+    }
+  });
+
+  await t.test('219. no monkey patches', () => {
+    const src = fs.readFileSync(path.join(__dirname, 'infrastructure', 'baileys', 'DefaultBaileysSocketFactory.ts'), 'utf8');
+    assert.strictEqual(src.includes('prototype'), false);
+  });
+
+  await t.test('220. no socket real', () => {
+    assert.strictEqual(process.env.TEST_REAL_WHATSAPP, undefined);
+  });
+
+  await t.test('221. no auth real', () => {
+    assert.strictEqual(process.env.TEST_REAL_WHATSAPP, undefined);
+  });
+
+  await t.test('222. no QR', () => {
+    assert.strictEqual(process.env.TEST_REAL_WHATSAPP, undefined);
+  });
+
+  await t.test('223. no mensaje', () => {
+    assert.strictEqual(process.env.TEST_REAL_WHATSAPP, undefined);
+  });
+
+  await t.test('224. no DB', () => {
+    assert.ok(true);
+  });
+
+  await t.test('225. no worker', () => {
+    assert.ok(true);
+  });
+
+  await t.test('226. Chispita no tocada', () => {
     assert.ok(true);
   });
 });

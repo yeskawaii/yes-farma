@@ -4,6 +4,7 @@ import {
   WhatsAppTestSendRunner,
   isValidE164
 } from '../modules/notifications/infrastructure/baileys/WhatsAppTestSendRunner';
+import { terminateCli } from './cliTerminationHelper';
 
 export const parseTestSendArgs = () => {
   const args = process.argv.slice(2);
@@ -57,58 +58,81 @@ export const parseTestSendArgs = () => {
   };
 };
 
-export const main = async () => {
-  const { authDir, to, confirm, hasMessageArg, timeoutMs } = parseTestSendArgs();
+export const main = async (deps?: {
+  runtime?: ReturnType<typeof createWhatsAppRuntime>;
+  parseArgs?: typeof parseTestSendArgs;
+}): Promise<number> => {
+  const { authDir, to, confirm, hasMessageArg, timeoutMs } = deps?.parseArgs
+    ? deps.parseArgs()
+    : parseTestSendArgs();
 
+  // Pre-runtime validations: return 1 immediately without creating connection
   if (hasMessageArg) {
     console.error('WHATSAPP_TEST_SEND=ABORTED');
     console.error('FAILURE_CODE=MESSAGE_NOT_ALLOWED');
-    process.exitCode = 1;
-    return;
+    return 1;
   }
 
   if (confirm !== 'YESKIRA_SEND_TEST') {
     console.error('WHATSAPP_TEST_SEND=ABORTED');
-    process.exitCode = 1;
-    return;
+    return 1;
   }
 
   if (!to || !isValidE164(to)) {
     console.error('WHATSAPP_TEST_SEND=INVALID_RECIPIENT');
-    process.exitCode = 1;
-    return;
+    return 1;
   }
 
-  const runtime = createWhatsAppRuntime({
-    authDir,
-    requireAbsoluteAuthDir: true
-  });
+  let runtime: ReturnType<typeof createWhatsAppRuntime> | undefined;
+  let exitCode = 1;
 
-  const runner = new WhatsAppTestSendRunner({
-    connection: runtime.connection,
-    deliveryPort: runtime.delivery,
-    recipientResolver: runtime.recipientResolver,
-    to,
-    confirm,
-    timeoutMs,
-    registerSignalHandlers: true
-  });
+  try {
+    runtime = deps?.runtime ?? createWhatsAppRuntime({
+      authDir,
+      requireAbsoluteAuthDir: true
+    });
 
-  const result = await runner.run();
+    const runner = new WhatsAppTestSendRunner({
+      connection: runtime.connection,
+      deliveryPort: runtime.delivery,
+      recipientResolver: runtime.recipientResolver,
+      to,
+      confirm,
+      timeoutMs,
+      registerSignalHandlers: true
+    });
 
-  if (result.status === 'PASS' && !result.cleanupFailed && !result.authPersistenceFailed) {
-    process.exitCode = 0;
-  } else {
-    process.exitCode = 1;
-  }
-};
-
-if (process.env.NODE_ENV !== 'test') {
-  main().catch(() => {
+    const result = await runner.run();
+    if (result.status === 'PASS' && !result.cleanupFailed && !result.authPersistenceFailed) {
+      exitCode = 0;
+    } else {
+      exitCode = 1;
+    }
+  } catch (err) {
     console.error('WHATSAPP_TEST_SEND=FAIL');
     console.error('FAILURE_CODE=FATAL_ERROR');
     console.error('SEND_ATTEMPTED=UNKNOWN');
     console.error('AUTOMATIC_RETRY=NO');
-    process.exitCode = 1;
-  });
+    exitCode = 1;
+  } finally {
+    if (runtime) {
+      try {
+        await runtime.connection.close();
+      } catch (cleanupErr) {
+        console.error('Final cleanup error during WhatsApp test send:', cleanupErr instanceof Error ? cleanupErr.message : cleanupErr);
+        exitCode = 1;
+      }
+    }
+  }
+
+  return exitCode;
+};
+
+if (process.env.NODE_ENV !== 'test') {
+  main()
+    .then((code) => terminateCli(code))
+    .catch((err) => {
+      console.error('Fatal CLI error:', err instanceof Error ? err.message : err);
+      terminateCli(1);
+    });
 }

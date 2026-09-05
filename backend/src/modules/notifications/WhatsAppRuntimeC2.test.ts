@@ -915,20 +915,18 @@ test('WhatsApp Runtime Factory, Persistence & Operator Commands - Phase C2', asy
     assert.strictEqual(manager.getState(), 'DISCONNECTED');
   });
 
-  await t.test('59. whatsapp-link.ts no usa process.exit(...) para salida normal', () => {
+  await t.test('59. whatsapp-link.ts delega terminacion a terminateCli tras cleanup garantizado', () => {
     const filePath = path.join(__dirname, '..', '..', 'scripts', 'whatsapp-link.ts');
     const content = fs.readFileSync(filePath, 'utf8');
-    assert.strictEqual(content.includes('process.exit('), false);
-    assert.strictEqual(content.includes('process.exitCode = 0'), true);
-    assert.strictEqual(content.includes('process.exitCode = 1'), true);
+    assert.strictEqual(content.includes('terminateCli('), true);
+    assert.strictEqual(content.includes('runtime.connection.close()'), true);
   });
 
-  await t.test('60. whatsapp-probe.ts no usa process.exit(...) para salida normal', () => {
+  await t.test('60. whatsapp-probe.ts delega terminacion a terminateCli tras cleanup garantizado', () => {
     const filePath = path.join(__dirname, '..', '..', 'scripts', 'whatsapp-probe.ts');
     const content = fs.readFileSync(filePath, 'utf8');
-    assert.strictEqual(content.includes('process.exit('), false);
-    assert.strictEqual(content.includes('process.exitCode = 0'), true);
-    assert.strictEqual(content.includes('process.exitCode = 1'), true);
+    assert.strictEqual(content.includes('terminateCli('), true);
+    assert.strictEqual(content.includes('runtime.connection.close()'), true);
   });
 
   await t.test('61. ningún test abre socket real', () => {

@@ -513,16 +513,17 @@ test('WhatsApp Test Send Manual Smoke Test - Phase C2d', async (t) => {
     assert.strictEqual(result.cleanupFailed, true);
   });
 
-  await t.test('29. process.exit no usado', () => {
+  await t.test('29. whatsapp-test-send.ts delega terminacion a terminateCli tras cleanup garantizado', () => {
     const scriptPath = path.join(__dirname, '..', '..', 'scripts', 'whatsapp-test-send.ts');
     const content = fs.readFileSync(scriptPath, 'utf8');
-    assert.strictEqual(content.includes('process.exit('), false);
+    assert.strictEqual(content.includes('terminateCli('), true);
+    assert.strictEqual(content.includes('runtime.connection.close()'), true);
   });
 
-  await t.test('30. process.exitCode usado', () => {
+  await t.test('30. whatsapp-test-send.ts retorna exit code numerico', () => {
     const scriptPath = path.join(__dirname, '..', '..', 'scripts', 'whatsapp-test-send.ts');
     const content = fs.readFileSync(scriptPath, 'utf8');
-    assert.strictEqual(content.includes('process.exitCode ='), true);
+    assert.strictEqual(content.includes('Promise<number>'), true);
   });
 
   await t.test('31. no setInterval', () => {

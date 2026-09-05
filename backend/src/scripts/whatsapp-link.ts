@@ -2,6 +2,7 @@ import { createWhatsAppRuntime } from '../modules/notifications/infrastructure/b
 import { TerminalQrRenderer } from '../modules/notifications/infrastructure/baileys/TerminalQrRenderer';
 import { WhatsAppLinkRunner } from '../modules/notifications/infrastructure/baileys/WhatsAppLinkRunner';
 import { resolveOperatorAuthDir } from '../modules/notifications/infrastructure/baileys/resolveOperatorAuthDir';
+import { terminateCli } from './cliTerminationHelper';
 
 export const parseLinkArgs = () => {
   const args = process.argv.slice(2);
@@ -34,35 +35,54 @@ export const parseLinkArgs = () => {
   return { authDir, timeoutMs: timeoutSeconds * 1000 };
 };
 
-const main = async () => {
-  const { authDir, timeoutMs } = parseLinkArgs();
+export const main = async (deps?: {
+  runtime?: ReturnType<typeof createWhatsAppRuntime>;
+  parseArgs?: typeof parseLinkArgs;
+}): Promise<number> => {
+  let runtime: ReturnType<typeof createWhatsAppRuntime> | undefined;
+  let exitCode = 1;
 
-  console.log('Initiating WhatsApp Linkage procedure...');
-  const runtime = createWhatsAppRuntime({
-    authDir,
-    requireAbsoluteAuthDir: true
-  });
-  const qrRenderer = new TerminalQrRenderer();
+  try {
+    const { authDir, timeoutMs } = deps?.parseArgs ? deps.parseArgs() : parseLinkArgs();
 
-  const runner = new WhatsAppLinkRunner({
-    connection: runtime.connection,
-    qrRenderer,
-    timeoutMs,
-    registerSignalHandlers: true
-  });
+    console.log('Initiating WhatsApp Linkage procedure...');
+    runtime = deps?.runtime ?? createWhatsAppRuntime({
+      authDir,
+      requireAbsoluteAuthDir: true
+    });
+    const qrRenderer = new TerminalQrRenderer();
 
-  const result = await runner.run();
+    const runner = new WhatsAppLinkRunner({
+      connection: runtime.connection,
+      qrRenderer,
+      timeoutMs,
+      registerSignalHandlers: true
+    });
 
-  if (result.status === 'LINKED') {
-    process.exitCode = 0;
-  } else {
-    process.exitCode = 1;
+    const result = await runner.run();
+    exitCode = result.status === 'LINKED' ? 0 : 1;
+  } catch (err) {
+    console.error('Fatal error during WhatsApp linkage:', err instanceof Error ? err.message : err);
+    exitCode = 1;
+  } finally {
+    if (runtime) {
+      try {
+        await runtime.connection.close();
+      } catch (cleanupErr) {
+        console.error('Final cleanup error during WhatsApp linkage:', cleanupErr instanceof Error ? cleanupErr.message : cleanupErr);
+        exitCode = 1;
+      }
+    }
   }
+
+  return exitCode;
 };
 
 if (process.env.NODE_ENV !== 'test') {
-  main().catch((err) => {
-    console.error('Fatal error during WhatsApp linkage:', err instanceof Error ? err.message : err);
-    process.exitCode = 1;
-  });
+  main()
+    .then((code) => terminateCli(code))
+    .catch((err) => {
+      console.error('Fatal CLI error:', err instanceof Error ? err.message : err);
+      terminateCli(1);
+    });
 }
