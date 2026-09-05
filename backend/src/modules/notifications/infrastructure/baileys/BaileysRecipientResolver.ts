@@ -62,12 +62,20 @@ export class BaileysRecipientResolver implements IWhatsAppRecipientResolver {
         };
       }
 
+      const isLid = Boolean(match.jid.endsWith('@lid') || match.jid.includes('@lid'));
       return {
         canonicalJid: match.jid,
         exists: true,
-        isLid: false
+        isLid
       };
-    } catch {
+    } catch (err: unknown) {
+      if (
+        err instanceof Error &&
+        (err.message === 'WHATSAPP_QUERY_NOT_SUPPORTED' ||
+          err.message === 'WHATSAPP_NOT_CONNECTED')
+      ) {
+        throw err;
+      }
       return {
         canonicalJid: '',
         exists: false,

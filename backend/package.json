@@ -17,7 +17,9 @@
     "whatsapp:test-send": "node dist/scripts/whatsapp-test-send.js",
     "whatsapp:test-send:dev": "tsx src/scripts/whatsapp-test-send.ts",
     "whatsapp:sync-readiness": "node dist/scripts/whatsapp-sync-readiness.js",
-    "whatsapp:sync-readiness:dev": "tsx src/scripts/whatsapp-sync-readiness.ts"
+    "whatsapp:sync-readiness:dev": "tsx src/scripts/whatsapp-sync-readiness.ts",
+    "whatsapp:resolve-recipient": "node dist/scripts/whatsapp-resolve-recipient.js",
+    "whatsapp:resolve-recipient:dev": "tsx src/scripts/whatsapp-resolve-recipient.ts"
   },
   "keywords": [],
   "author": "",
