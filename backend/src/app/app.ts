@@ -11,11 +11,10 @@ import { clinicalEncounterRoutes } from '../modules/clinical-encounters/infrastr
 import { dashboardRoutes } from '../modules/dashboard/infrastructure/dashboardRoutes';
 import { patientDocumentRoutes } from '../modules/patient-documents/infrastructure/patientDocumentRoutes';
 import { errorHandler } from '../shared/errors/errorHandler';
-import { buildCompositionRoot } from './compositionRoot';
+import { buildCompositionRoot, AppCompositionRoot } from './compositionRoot';
 
-export const createApp = () => {
+export const createApp = (composition: AppCompositionRoot = buildCompositionRoot()) => {
   const app = express();
-  const composition = buildCompositionRoot();
 
   app.set('trust proxy', env.TRUST_PROXY || false);
 

@@ -45,6 +45,22 @@ const envSchema = z.object({
   R2_UPLOAD_URL_TTL_SECONDS: z.string().transform(Number).default('600'),
   R2_DOWNLOAD_URL_TTL_SECONDS: z.string().transform(Number).default('300'),
   WHATSAPP_AUTH_DIR: z.string().min(1).optional(),
+  NOTIFICATION_WORKER_ENABLED: z
+    .enum(['true', 'false'], {
+      errorMap: () => ({ message: 'NOTIFICATION_WORKER_ENABLED must be "true" or "false"' })
+    })
+    .default('false')
+    .transform((v) => v === 'true'),
+  NOTIFICATION_WORKER_POLL_MS: z
+    .string()
+    .default('5000')
+    .refine((val) => /^\d+$/.test(val), {
+      message: 'NOTIFICATION_WORKER_POLL_MS must be an integer string'
+    })
+    .transform(Number)
+    .refine((val) => val >= 1000, {
+      message: 'NOTIFICATION_WORKER_POLL_MS must be at least 1000 ms (no sub-second frequency)'
+    }),
 });
 
 const parsed = envSchema.safeParse(process.env);
