@@ -2,6 +2,7 @@ FROM node:22-alpine AS development
 WORKDIR /usr/src/app
 COPY package*.json ./
 COPY prisma ./prisma/
+COPY scripts/patch-libsignal-session-logging.cjs ./scripts/
 RUN npm ci
 COPY . .
 RUN DATABASE_URL="postgresql://build:build@localhost:5432/build?schema=public" npx prisma generate
@@ -12,6 +13,7 @@ FROM node:22-alpine AS build
 WORKDIR /usr/src/app
 COPY package*.json ./
 COPY prisma ./prisma/
+COPY scripts/patch-libsignal-session-logging.cjs ./scripts/
 RUN npm ci
 COPY . .
 RUN DATABASE_URL="postgresql://build:build@localhost:5432/build?schema=public" npx prisma generate
@@ -22,6 +24,7 @@ WORKDIR /usr/src/app
 COPY package*.json ./
 COPY prisma ./prisma/
 COPY prisma.config.ts ./prisma.config.ts
+COPY scripts/patch-libsignal-session-logging.cjs ./scripts/
 RUN npm ci --omit=dev
 COPY --from=build /usr/src/app/dist ./dist
 COPY --from=build /usr/src/app/src/generated/prisma ./dist/generated/prisma
