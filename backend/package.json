@@ -19,7 +19,8 @@
     "whatsapp:sync-readiness": "node dist/scripts/whatsapp-sync-readiness.js",
     "whatsapp:sync-readiness:dev": "tsx src/scripts/whatsapp-sync-readiness.ts",
     "whatsapp:resolve-recipient": "node dist/scripts/whatsapp-resolve-recipient.js",
-    "whatsapp:resolve-recipient:dev": "tsx src/scripts/whatsapp-resolve-recipient.ts"
+    "whatsapp:resolve-recipient:dev": "tsx src/scripts/whatsapp-resolve-recipient.ts",
+    "postinstall": "node scripts/patch-libsignal-session-logging.cjs"
   },
   "keywords": [],
   "author": "",
