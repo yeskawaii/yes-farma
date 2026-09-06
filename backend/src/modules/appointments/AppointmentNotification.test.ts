@@ -34,6 +34,9 @@ const createMockRepository = (initialData: Partial<InMemoryDb> = {}) => {
   };
 
   const createTx = () => ({
+    clinicalEncounter: {
+      findFirst: async () => null
+    },
     patient: {
       findFirst: async (args: any) => {
         const p = db.patients.get(args.where.id);

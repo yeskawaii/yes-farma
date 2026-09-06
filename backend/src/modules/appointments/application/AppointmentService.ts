@@ -19,6 +19,9 @@ export type IPrismaTxAppointment = IAppointmentNotificationTx & {
     findFirst(args: Prisma.AppointmentFindFirstArgs): Promise<Appointment | null>;
     update(args: Prisma.AppointmentUpdateArgs): Promise<Appointment>;
   };
+  clinicalEncounter: {
+    findFirst(args: Prisma.ClinicalEncounterFindFirstArgs): Promise<any>;
+  };
   auditEvent: {
     create(args: Prisma.AuditEventCreateArgs): Promise<AuditEvent>;
   };
@@ -342,6 +345,19 @@ export class AppointmentService {
           throw new AppError('FORBIDDEN', 'Un profesional solo puede editar sus propias citas', 403);
         }
 
+        const linkedEncounter = await tx.clinicalEncounter.findFirst({
+          where: { appointmentId: id, clinicId },
+          select: { id: true }
+        });
+
+        if (linkedEncounter) {
+          throw new AppError(
+            'APPOINTMENT_HAS_ENCOUNTER',
+            'La cita ya tiene una atención clínica vinculada y no puede modificarse por esta operación.',
+            409
+          );
+        }
+
         let newProfId = appointment.professionalMembershipId;
         if (input.professionalMembershipId && input.professionalMembershipId !== appointment.professionalMembershipId) {
           if (actorRole === 'PROFESSIONAL') {
@@ -501,13 +517,9 @@ export class AppointmentService {
         throw new AppError('NOT_FOUND', 'Cita no encontrada', 404);
       }
 
-      if (appointment.status === newStatus) {
-        return appointment;
-      }
-
       const current = appointment.status;
 
-      // Roles checks
+      // La autorización debe evaluarse antes de cualquier respuesta idempotente.
       if (actorRole === 'PROFESSIONAL' && appointment.professionalMembershipId !== membershipId) {
         throw new AppError('FORBIDDEN', 'Un profesional solo puede cambiar el estado de sus propias citas', 403);
       }
@@ -515,11 +527,36 @@ export class AppointmentService {
         throw new AppError('FORBIDDEN', 'Un asistente no puede iniciar ni finalizar atención', 403);
       }
 
-      // Valid transitions
+      if (current === newStatus) {
+        return appointment;
+      }
+
+      // IN_PROGRESS y COMPLETED son ahora consecuencias del flujo clínico.
+      if (newStatus === 'IN_PROGRESS' || newStatus === 'COMPLETED') {
+        throw new AppError(
+          'CARE_FLOW_REQUIRED',
+          'Use el flujo de atención clínica para iniciar o completar esta cita.',
+          409
+        );
+      }
+
+      const linkedEncounter = await tx.clinicalEncounter.findFirst({
+        where: { appointmentId: id, clinicId },
+        select: { id: true }
+      });
+
+      if (linkedEncounter) {
+        throw new AppError(
+          'APPOINTMENT_HAS_ENCOUNTER',
+          'La cita ya tiene una atención clínica vinculada y no admite esta transición administrativa.',
+          409
+        );
+      }
+
+      // Solo permanecen como transiciones administrativas CONFIRMED y NO_SHOW.
       let valid = false;
-      if (current === 'SCHEDULED' && ['CONFIRMED', 'IN_PROGRESS', 'NO_SHOW'].includes(newStatus)) valid = true;
-      if (current === 'CONFIRMED' && ['IN_PROGRESS', 'NO_SHOW'].includes(newStatus)) valid = true;
-      if (current === 'IN_PROGRESS' && ['COMPLETED'].includes(newStatus)) valid = true;
+      if (current === 'SCHEDULED' && ['CONFIRMED', 'NO_SHOW'].includes(newStatus)) valid = true;
+      if (current === 'CONFIRMED' && newStatus === 'NO_SHOW') valid = true;
 
       if (!valid) {
         throw new AppError('INVALID_APPOINTMENT_TRANSITION', `Transición de estado no permitida desde ${current} hacia ${newStatus}`, 409);
@@ -566,22 +603,36 @@ export class AppointmentService {
         throw new AppError('NOT_FOUND', 'Cita no encontrada', 404);
       }
 
-      if (appointment.status === 'CANCELLED') {
-        return appointment;
-      }
-
       const current = appointment.status;
 
-      if (['COMPLETED', 'NO_SHOW'].includes(current)) {
-        throw new AppError('INVALID_APPOINTMENT_TRANSITION', `Citas ${current} no pueden ser canceladas`, 409);
-      }
-
+      // Autorizar antes de devolver éxito idempotente.
       if (actorRole === 'PROFESSIONAL' && appointment.professionalMembershipId !== membershipId) {
         throw new AppError('FORBIDDEN', 'Un profesional solo puede cancelar sus propias citas', 403);
       }
 
       if (actorRole === 'ASSISTANT' && current === 'IN_PROGRESS') {
         throw new AppError('FORBIDDEN', 'Un asistente no puede cancelar una cita en progreso', 403);
+      }
+
+      if (current === 'CANCELLED') {
+        return appointment;
+      }
+
+      if (['COMPLETED', 'NO_SHOW'].includes(current)) {
+        throw new AppError('INVALID_APPOINTMENT_TRANSITION', `Citas ${current} no pueden ser canceladas`, 409);
+      }
+
+      const linkedEncounter = await tx.clinicalEncounter.findFirst({
+        where: { appointmentId: id, clinicId },
+        select: { id: true }
+      });
+
+      if (linkedEncounter) {
+        throw new AppError(
+          'APPOINTMENT_HAS_ENCOUNTER',
+          'La cita ya tiene una atención clínica vinculada y no puede cancelarse.',
+          409
+        );
       }
 
       const updated = await tx.appointment.update({

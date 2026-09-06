@@ -10,6 +10,10 @@ const createMockPrisma = (overrides = {}) => {
       findFirst: async () => null,
       create: async (data: any) => ({ id: 'mock-id', ...data.data }),
     },
+    clinicalEncounter: {
+      findFirst: async () => null,
+    },
+
     patient: {
       findFirst: async () => ({ id: 'patient-1', clinicId: 'clinic-1', status: 'ACTIVE' }),
     },
@@ -532,6 +536,33 @@ test('AppointmentService - Create and List', async (t) => {
     await assert.rejects(svc.updateAppointment('c1', 'a1', 'prof-1', 'u1', 'PROFESSIONAL', { professionalMembershipId: 'prof-2' }), (err: any) => err.code === 'FORBIDDEN');
   });
 
+  await t.test('F3.1. No se modifica una cita que ya tiene consulta vinculada', async () => {
+    const prisma = createMockPrisma({
+      appointment: {
+        findFirst: async () => ({
+          id: 'a1',
+          clinicId: 'c1',
+          status: 'SCHEDULED',
+          professionalMembershipId: 'prof-1',
+          startAt: new Date(),
+          endAt: new Date()
+        })
+      },
+      clinicalEncounter: {
+        findFirst: async () => ({ id: 'enc-1' })
+      }
+    });
+
+    const svc = new AppointmentService(prisma);
+
+    await assert.rejects(
+      svc.updateAppointment('c1', 'a1', 'mem-1', 'u1', 'OWNER', { reason: 'x' }),
+      (err: any) =>
+        err.code === 'APPOINTMENT_HAS_ENCOUNTER' &&
+        err.statusCode === 409
+    );
+  });
+
   await t.test('12. No se edita cita IN_PROGRESS', async () => {
     const prisma = createMockPrisma({
       appointment: {findFirst: async () => ({ id: 'a1', clinicId: 'c1', status: 'IN_PROGRESS', professionalMembershipId: 'prof-1' }) }
@@ -645,37 +676,76 @@ test('AppointmentService - Create and List', async (t) => {
     await assert.doesNotReject(svc.updateAppointmentStatus('c1', 'a1', 'mem-1', 'u1', 'OWNER', { status: 'CONFIRMED' }));
   });
 
-  await t.test('23. IN_PROGRESS desde SCHEDULED es válido', async () => {
+  await t.test('23. IN_PROGRESS desde SCHEDULED requiere startCare', async () => {
     const prisma = createMockPrisma({
       appointment: {
-        findFirst: async () => ({ id: 'a1', clinicId: 'c1', status: 'SCHEDULED' }),
-        update: async () => ({ id: 'ok' })
+        findFirst: async () => ({
+          id: 'a1',
+          clinicId: 'c1',
+          status: 'SCHEDULED'
+        })
       }
     });
+
     const svc = new AppointmentService(prisma);
-    await assert.doesNotReject(svc.updateAppointmentStatus('c1', 'a1', 'mem-1', 'u1', 'OWNER', { status: 'IN_PROGRESS' }));
+
+    await assert.rejects(
+      svc.updateAppointmentStatus(
+        'c1', 'a1', 'mem-1', 'u1', 'OWNER',
+        { status: 'IN_PROGRESS' }
+      ),
+      (err: any) =>
+        err.code === 'CARE_FLOW_REQUIRED' &&
+        err.statusCode === 409
+    );
   });
 
-  await t.test('24. IN_PROGRESS desde CONFIRMED es válido', async () => {
+  await t.test('24. IN_PROGRESS desde CONFIRMED requiere startCare', async () => {
     const prisma = createMockPrisma({
       appointment: {
-        findFirst: async () => ({ id: 'a1', clinicId: 'c1', status: 'CONFIRMED' }),
-        update: async () => ({ id: 'ok' })
+        findFirst: async () => ({
+          id: 'a1',
+          clinicId: 'c1',
+          status: 'CONFIRMED'
+        })
       }
     });
+
     const svc = new AppointmentService(prisma);
-    await assert.doesNotReject(svc.updateAppointmentStatus('c1', 'a1', 'mem-1', 'u1', 'OWNER', { status: 'IN_PROGRESS' }));
+
+    await assert.rejects(
+      svc.updateAppointmentStatus(
+        'c1', 'a1', 'mem-1', 'u1', 'OWNER',
+        { status: 'IN_PROGRESS' }
+      ),
+      (err: any) =>
+        err.code === 'CARE_FLOW_REQUIRED' &&
+        err.statusCode === 409
+    );
   });
 
-  await t.test('25. COMPLETED desde IN_PROGRESS es válido', async () => {
+  await t.test('25. COMPLETED desde IN_PROGRESS requiere finalizeCare', async () => {
     const prisma = createMockPrisma({
       appointment: {
-        findFirst: async () => ({ id: 'a1', clinicId: 'c1', status: 'IN_PROGRESS' }),
-        update: async () => ({ id: 'ok' })
+        findFirst: async () => ({
+          id: 'a1',
+          clinicId: 'c1',
+          status: 'IN_PROGRESS'
+        })
       }
     });
+
     const svc = new AppointmentService(prisma);
-    await assert.doesNotReject(svc.updateAppointmentStatus('c1', 'a1', 'mem-1', 'u1', 'OWNER', { status: 'COMPLETED' }));
+
+    await assert.rejects(
+      svc.updateAppointmentStatus(
+        'c1', 'a1', 'mem-1', 'u1', 'OWNER',
+        { status: 'COMPLETED' }
+      ),
+      (err: any) =>
+        err.code === 'CARE_FLOW_REQUIRED' &&
+        err.statusCode === 409
+    );
   });
 
   await t.test('26. NO_SHOW desde SCHEDULED es válido', async () => {
@@ -700,12 +770,26 @@ test('AppointmentService - Create and List', async (t) => {
     await assert.doesNotReject(svc.updateAppointmentStatus('c1', 'a1', 'mem-1', 'u1', 'OWNER', { status: 'NO_SHOW' }));
   });
 
-  await t.test('28. Transición inválida devuelve INVALID_APPOINTMENT_TRANSITION', async () => {
+  await t.test('28. COMPLETED hacia IN_PROGRESS requiere flujo clínico', async () => {
     const prisma = createMockPrisma({
-      appointment: {findFirst: async () => ({ id: 'a1', clinicId: 'c1', status: 'COMPLETED' }) }
+      appointment: {
+        findFirst: async () => ({
+          id: 'a1',
+          clinicId: 'c1',
+          status: 'COMPLETED'
+        })
+      }
     });
+
     const svc = new AppointmentService(prisma);
-    await assert.rejects(svc.updateAppointmentStatus('c1', 'a1', 'mem-1', 'u1', 'OWNER', { status: 'IN_PROGRESS' }), (err: any) => err.code === 'INVALID_APPOINTMENT_TRANSITION');
+
+    await assert.rejects(
+      svc.updateAppointmentStatus(
+        'c1', 'a1', 'mem-1', 'u1', 'OWNER',
+        { status: 'IN_PROGRESS' }
+      ),
+      (err: any) => err.code === 'CARE_FLOW_REQUIRED'
+    );
   });
 
   await t.test('29. Mismo estado es idempotente sin auditoría duplicada', async () => {
@@ -755,6 +839,57 @@ test('AppointmentService - Create and List', async (t) => {
     const svc = new AppointmentService(prisma);
     await svc.updateAppointmentStatus('c1', 'a1', 'mem-1', 'u1', 'OWNER', { status: 'CONFIRMED' });
     assert.strictEqual(action, 'APPOINTMENT_STATUS_CHANGED');
+  });
+
+  await t.test('F3.2. Transición administrativa se bloquea si existe consulta vinculada', async () => {
+    const prisma = createMockPrisma({
+      appointment: {
+        findFirst: async () => ({
+          id: 'a1',
+          clinicId: 'c1',
+          status: 'SCHEDULED',
+          professionalMembershipId: 'prof-1'
+        })
+      },
+      clinicalEncounter: {
+        findFirst: async () => ({ id: 'enc-1' })
+      }
+    });
+
+    const svc = new AppointmentService(prisma);
+
+    await assert.rejects(
+      svc.updateAppointmentStatus(
+        'c1', 'a1', 'mem-1', 'u1', 'OWNER',
+        { status: 'CONFIRMED' }
+      ),
+      (err: any) =>
+        err.code === 'APPOINTMENT_HAS_ENCOUNTER' &&
+        err.statusCode === 409
+    );
+  });
+
+  await t.test('F3.3. Autorización ocurre antes de idempotencia de estado', async () => {
+    const prisma = createMockPrisma({
+      appointment: {
+        findFirst: async () => ({
+          id: 'a1',
+          clinicId: 'c1',
+          status: 'CONFIRMED',
+          professionalMembershipId: 'prof-other'
+        })
+      }
+    });
+
+    const svc = new AppointmentService(prisma);
+
+    await assert.rejects(
+      svc.updateAppointmentStatus(
+        'c1', 'a1', 'prof-1', 'u1', 'PROFESSIONAL',
+        { status: 'CONFIRMED' }
+      ),
+      (err: any) => err.code === 'FORBIDDEN'
+    );
   });
 
   await t.test('34. OWNER cancela SCHEDULED', async () => {
@@ -833,6 +968,55 @@ test('AppointmentService - Create and List', async (t) => {
     const svc = new AppointmentService(prisma);
     await svc.cancelAppointment('c1', 'a1', 'mem-1', 'u1', 'OWNER', {});
     assert.strictEqual(auditCreated, false);
+  });
+
+  await t.test('F3.4. No se cancela cita con consulta vinculada', async () => {
+    const prisma = createMockPrisma({
+      appointment: {
+        findFirst: async () => ({
+          id: 'a1',
+          clinicId: 'c1',
+          status: 'CONFIRMED',
+          professionalMembershipId: 'prof-1'
+        })
+      },
+      clinicalEncounter: {
+        findFirst: async () => ({ id: 'enc-1' })
+      }
+    });
+
+    const svc = new AppointmentService(prisma);
+
+    await assert.rejects(
+      svc.cancelAppointment(
+        'c1', 'a1', 'mem-1', 'u1', 'OWNER', {}
+      ),
+      (err: any) =>
+        err.code === 'APPOINTMENT_HAS_ENCOUNTER' &&
+        err.statusCode === 409
+    );
+  });
+
+  await t.test('F3.5. Autorización ocurre antes de cancelación idempotente', async () => {
+    const prisma = createMockPrisma({
+      appointment: {
+        findFirst: async () => ({
+          id: 'a1',
+          clinicId: 'c1',
+          status: 'CANCELLED',
+          professionalMembershipId: 'prof-other'
+        })
+      }
+    });
+
+    const svc = new AppointmentService(prisma);
+
+    await assert.rejects(
+      svc.cancelAppointment(
+        'c1', 'a1', 'prof-1', 'u1', 'PROFESSIONAL', {}
+      ),
+      (err: any) => err.code === 'FORBIDDEN'
+    );
   });
 
   await t.test('42. COMPLETED no puede cancelarse', async () => {
