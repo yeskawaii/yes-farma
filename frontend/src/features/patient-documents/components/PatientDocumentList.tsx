@@ -13,6 +13,8 @@ import { Modal } from '../../../shared/components/Modal/Modal';
 
 interface PatientDocumentListProps {
   patientId: string;
+  clinicalEncounterId?: string;
+  readOnly?: boolean;
 }
 
 const CATEGORY_LABELS: Record<DocumentCategory, string> = {
@@ -26,9 +28,14 @@ const CATEGORY_LABELS: Record<DocumentCategory, string> = {
   OTHER: 'Otro',
 };
 
-export function PatientDocumentList({ patientId }: PatientDocumentListProps) {
+export function PatientDocumentList({
+  patientId,
+  clinicalEncounterId,
+  readOnly = false
+}: PatientDocumentListProps) {
   const { activeRole } = useAuth();
   const canManage = activeRole === 'OWNER' || activeRole === 'PROFESSIONAL';
+  const canWrite = canManage && !readOnly;
 
   const [documents, setDocuments] = useState<PatientDocument[]>([]);
   const [loading, setLoading] = useState(true);
@@ -50,7 +57,11 @@ export function PatientDocumentList({ patientId }: PatientDocumentListProps) {
       setLoading(true);
       setError(null);
       const data = await patientDocumentsApi.listDocuments(patientId);
-      setDocuments(data);
+      setDocuments(
+        clinicalEncounterId
+          ? data.filter((document) => document.clinicalEncounterId === clinicalEncounterId)
+          : data
+      );
     } catch (err: unknown) {
       if (err instanceof Error) {
         setError(err.message || 'Error al cargar los documentos.');
@@ -60,11 +71,18 @@ export function PatientDocumentList({ patientId }: PatientDocumentListProps) {
     } finally {
       setLoading(false);
     }
-  }, [patientId, canManage]);
+  }, [patientId, clinicalEncounterId, canManage]);
 
   useEffect(() => {
     fetchDocuments();
   }, [fetchDocuments]);
+
+  useEffect(() => {
+    if (!readOnly) return;
+
+    setShowUploadModal(false);
+    setDocumentToDelete(null);
+  }, [readOnly]);
 
   const handleDownload = async (doc: PatientDocument) => {
     try {
@@ -89,7 +107,7 @@ export function PatientDocumentList({ patientId }: PatientDocumentListProps) {
   };
 
   const handleDelete = async () => {
-    if (!documentToDelete) return;
+    if (!documentToDelete || !canWrite) return;
 
     try {
       setIsDeleting(true);
@@ -128,17 +146,23 @@ export function PatientDocumentList({ patientId }: PatientDocumentListProps) {
         <div>
           <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
             <FileText className="text-blue-500" size={20} />
-            Documentos del Paciente
+            {clinicalEncounterId ? 'Documentos de la Consulta' : 'Documentos del Paciente'}
           </h2>
-          <p className="text-sm text-slate-500 mt-1">Archivos y estudios clínicos adjuntos</p>
+          <p className="text-sm text-slate-500 mt-1">
+            {clinicalEncounterId
+              ? 'Archivos y estudios vinculados a esta consulta'
+              : 'Archivos y estudios clínicos adjuntos'}
+          </p>
         </div>
-        <button
-          onClick={() => setShowUploadModal(true)}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors shrink-0 text-sm"
-        >
-          <Plus size={16} />
-          Subir Documento
-        </button>
+        {canWrite && (
+          <button
+            onClick={() => setShowUploadModal(true)}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors shrink-0 text-sm"
+          >
+            <Plus size={16} />
+            Subir Documento
+          </button>
+        )}
       </div>
 
       {loading ? (
@@ -161,7 +185,13 @@ export function PatientDocumentList({ patientId }: PatientDocumentListProps) {
             <FileText size={24} />
           </div>
           <h3 className="text-sm font-bold text-slate-900">Sin documentos</h3>
-          <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">No hay ningún documento adjunto a este paciente. Haz clic en "Subir Documento" para añadir uno.</p>
+          <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+            {clinicalEncounterId
+              ? readOnly
+                ? 'Esta consulta no tiene documentos clínicos vinculados.'
+                : 'Esta consulta aún no tiene documentos vinculados. Puedes subir uno desde aquí.'
+              : 'No hay ningún documento adjunto a este paciente. Haz clic en "Subir Documento" para añadir uno.'}
+          </p>
         </div>
       ) : (
         <div className="overflow-x-auto">
@@ -221,13 +251,15 @@ export function PatientDocumentList({ patientId }: PatientDocumentListProps) {
                       >
                         {downloadingId === doc.id ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
                       </button>
-                      <button
-                        onClick={() => setDocumentToDelete(doc)}
-                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                        title="Eliminar"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                      {canWrite && (
+                        <button
+                          onClick={() => setDocumentToDelete(doc)}
+                          className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Eliminar"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -237,9 +269,10 @@ export function PatientDocumentList({ patientId }: PatientDocumentListProps) {
         </div>
       )}
 
-      {showUploadModal && (
+      {showUploadModal && canWrite && (
         <UploadDocumentModal
           patientId={patientId}
+          clinicalEncounterId={clinicalEncounterId}
           onClose={() => setShowUploadModal(false)}
           onSuccess={() => {
             setShowUploadModal(false);
@@ -255,7 +288,7 @@ export function PatientDocumentList({ patientId }: PatientDocumentListProps) {
         />
       )}
 
-      {documentToDelete && (
+      {documentToDelete && canWrite && (
         <Modal
           onClose={() => !isDeleting && setDocumentToDelete(null)}
           closeOnBackdrop={!isDeleting}

@@ -5,6 +5,7 @@ import {
   HelpCircle,
   RefreshCw,
   AlertCircle,
+  Info,
   Zap,
   CheckCircle,
   CheckSquare,
@@ -27,6 +28,8 @@ import { ExitFastCaptureDialog } from './ExitFastCaptureDialog';
 
 interface OdontogramViewProps {
   patientId: string;
+  encounterId?: string;
+  readOnly?: boolean;
 }
 
 const QUADRANT_1 = [18, 17, 16, 15, 14, 13, 12, 11];
@@ -66,7 +69,11 @@ function generateSecureUuid(): string {
   throw new Error('El navegador no dispone de Web Crypto API segura para generar identificadores de operación.');
 }
 
-export const OdontogramView: React.FC<OdontogramViewProps> = ({ patientId }) => {
+export const OdontogramView: React.FC<OdontogramViewProps> = ({
+  patientId,
+  encounterId,
+  readOnly = false
+}) => {
   const [data, setData] = useState<OdontogramResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -81,6 +88,16 @@ export const OdontogramView: React.FC<OdontogramViewProps> = ({ patientId }) => 
   const [resetDockTrigger, setResetDockTrigger] = useState(0);
   const [isExitConfirmOpen, setIsExitConfirmOpen] = useState(false);
   const [dockHeight, setDockHeight] = useState(160);
+
+  useEffect(() => {
+    if (!readOnly) return;
+
+    setIsFastCaptureActive(false);
+    setSelectedTeeth(new Set());
+    setBatchFailures([]);
+    setBatchSuccessMessage(null);
+    setIsExitConfirmOpen(false);
+  }, [readOnly]);
 
   // Semantic Idempotency RequestId reference
   const requestIdRef = useRef<string | null>(null);
@@ -122,6 +139,8 @@ export const OdontogramView: React.FC<OdontogramViewProps> = ({ patientId }) => 
   }, [loadOdontogram]);
 
   const handleToggleFastCapture = () => {
+    if (readOnly) return;
+
     if (isFastCaptureActive) {
       // If there's an ongoing selection or dirty state, request confirmation modal
       if (selectedTeeth.size > 0) {
@@ -210,7 +229,7 @@ export const OdontogramView: React.FC<OdontogramViewProps> = ({ patientId }) => 
     };
     notes?: string | null;
   }) => {
-    if (selectedTeeth.size === 0) return;
+    if (readOnly || selectedTeeth.size === 0) return;
 
     try {
       setSubmittingBatch(true);
@@ -227,6 +246,7 @@ export const OdontogramView: React.FC<OdontogramViewProps> = ({ patientId }) => 
         payload = {
           requestId,
           action: 'RECORD_ASSESSMENT',
+          ...(encounterId ? { encounterId } : {}),
           assessmentType: 'HEALTHY',
           notes: params.notes || null,
           items: toothNumbers.map((toothNumber) => ({ toothNumber }))
@@ -236,6 +256,7 @@ export const OdontogramView: React.FC<OdontogramViewProps> = ({ patientId }) => 
         payload = {
           requestId,
           action: 'CREATE_FINDING',
+          ...(encounterId ? { encounterId } : {}),
           findingType,
           notes: params.notes || null,
           items: toothNumbers.map((toothNumber) => {
@@ -380,19 +401,21 @@ export const OdontogramView: React.FC<OdontogramViewProps> = ({ patientId }) => 
 
           <div className="flex items-center gap-2 self-start sm:self-auto">
             {/* Fast Capture Mode Activation Button */}
-            <button
-              type="button"
-              onClick={handleToggleFastCapture}
-              aria-pressed={isFastCaptureActive}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs ${
-                isFastCaptureActive
-                  ? 'bg-indigo-600 text-white ring-2 ring-indigo-500/50 shadow-md'
-                  : 'bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100'
-              }`}
-            >
-              <Zap size={15} className={isFastCaptureActive ? 'fill-white' : 'text-indigo-600'} />
-              Captura rápida
-            </button>
+            {!readOnly && (
+              <button
+                type="button"
+                onClick={handleToggleFastCapture}
+                aria-pressed={isFastCaptureActive}
+                className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs ${
+                  isFastCaptureActive
+                    ? 'bg-indigo-600 text-white ring-2 ring-indigo-500/50 shadow-md'
+                    : 'bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100'
+                }`}
+              >
+                <Zap size={15} className={isFastCaptureActive ? 'fill-white' : 'text-indigo-600'} />
+                Captura rápida
+              </button>
+            )}
 
             <button
               onClick={loadOdontogram}
@@ -404,6 +427,15 @@ export const OdontogramView: React.FC<OdontogramViewProps> = ({ patientId }) => 
             </button>
           </div>
         </div>
+
+        {readOnly && (
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-start gap-2 text-xs text-slate-600">
+            <Info size={16} className="shrink-0 mt-0.5 text-slate-500" />
+            <span>
+              El odontograma se muestra en modo de solo lectura para esta consulta.
+            </span>
+          </div>
+        )}
 
         {/* Fast Capture Mode Indicator Banner */}
         {isFastCaptureActive && (
@@ -856,6 +888,8 @@ export const OdontogramView: React.FC<OdontogramViewProps> = ({ patientId }) => 
         <ToothDetailModal
           patientId={patientId}
           toothNumber={selectedTooth}
+          encounterId={encounterId}
+          readOnly={readOnly}
           onClose={() => setSelectedTooth(null)}
           onFindingUpdated={loadOdontogram}
         />

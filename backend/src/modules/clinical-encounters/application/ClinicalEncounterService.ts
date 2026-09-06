@@ -439,6 +439,7 @@ export class ClinicalEncounterService {
         },
         professional: {
           select: {
+            id: true,
             user: {
               select: {
                 firstName: true,
@@ -548,6 +549,7 @@ export class ClinicalEncounterService {
         sexAtBirth: encounter.patient.sexAtBirth
       },
       professional: {
+        membershipId: encounter.professional.id,
         displayName: this.formatDisplayName(encounter.professional.user.firstName, encounter.professional.user.lastName)
       },
       finalizedBy: encounter.finalizedBy ? {

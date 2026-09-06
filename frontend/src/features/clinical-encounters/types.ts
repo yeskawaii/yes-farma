@@ -12,6 +12,7 @@ export interface ClinicalEncounterPatient {
 }
 
 export interface ClinicalEncounterProfessional {
+  membershipId: string;
   displayName: string;
 }
 

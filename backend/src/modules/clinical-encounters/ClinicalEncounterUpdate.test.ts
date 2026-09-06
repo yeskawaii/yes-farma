@@ -111,7 +111,7 @@ const safeDetailFixture = {
   updatedAt: new Date(),
   finalizedAt: null,
   patient: { id: 'p1', displayName: 'a b', birthDate: new Date(), sexAtBirth: null },
-  professional: { displayName: 'c d' },
+  professional: { membershipId: 'assigned-membership', displayName: 'c d' },
   finalizedBy: null,
   appointment: null,
   vitalSigns: null,

@@ -376,13 +376,14 @@ test('ClinicalEncounterService', async (t) => {
     await sub.test('36. OWNER puede consultar', async () => {
       const prisma = createMockPrisma({
         clinicalEncounter: { findFirst: async () => ({
-          id: 'e1', patient: { firstName: 'A' }, professional: { user: { firstName: 'C' } },
+          id: 'e1', patient: { firstName: 'A' }, professional: { id: 'assigned-membership', user: { firstName: 'C' } },
           diagnoses: [], procedures: [], amendments: []
         }) } as unknown as IClinicalEncounterRepository['clinicalEncounter']
       });
       const svc = new ClinicalEncounterService(prisma);
       const res = await svc.getEncounterById('c1', 'e1', 'OWNER');
       assert.strictEqual(res.id, 'e1');
+      assert.strictEqual(res.professional.membershipId, 'assigned-membership');
     });
 
     await sub.test('37. PROFESSIONAL puede consultar', async () => {

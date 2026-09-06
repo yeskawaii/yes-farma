@@ -25,6 +25,8 @@ import type {
 interface ToothDetailModalProps {
   patientId: string;
   toothNumber: number | null;
+  encounterId?: string;
+  readOnly?: boolean;
   onClose: () => void;
   onFindingUpdated: () => void;
 }
@@ -54,6 +56,8 @@ const WHOLE_TOOTH_ONLY_TYPES: DentalFindingType[] = [
 export const ToothDetailModal: React.FC<ToothDetailModalProps> = ({
   patientId,
   toothNumber,
+  encounterId,
+  readOnly = false,
   onClose,
   onFindingUpdated
 }) => {
@@ -92,7 +96,7 @@ export const ToothDetailModal: React.FC<ToothDetailModalProps> = ({
       const res = await odontogramApi.getToothDetail(patientId, toothNumber);
       setData(res);
       if (res.activeFindings.length === 0) {
-        setActiveTab('ADD');
+        setActiveTab(readOnly ? 'ACTIVE' : 'ADD');
       } else {
         setActiveTab('ACTIVE');
       }
@@ -107,7 +111,7 @@ export const ToothDetailModal: React.FC<ToothDetailModalProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [patientId, toothNumber]);
+  }, [patientId, toothNumber, readOnly]);
 
   useEffect(() => {
     if (toothNumber === null) return;
@@ -131,6 +135,18 @@ export const ToothDetailModal: React.FC<ToothDetailModalProps> = ({
 
     loadToothDetail();
   }, [patientId, toothNumber, isAnterior, loadToothDetail]);
+
+  useEffect(() => {
+    if (!readOnly) return;
+
+    setActiveTab((current) => current === 'ADD' ? 'ACTIVE' : current);
+    setResolvingId(null);
+    setCancellingId(null);
+    setResolutionNotes('');
+    setCancellationReason('');
+    setActionError(null);
+    setSubmitError(null);
+  }, [readOnly]);
 
   // Handle ESC key to close modal
   useEffect(() => {
@@ -181,7 +197,7 @@ export const ToothDetailModal: React.FC<ToothDetailModalProps> = ({
 
   const handleCreateFinding = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (toothNumber === null) return;
+    if (toothNumber === null || readOnly) return;
 
     try {
       setSubmitting(true);
@@ -189,6 +205,7 @@ export const ToothDetailModal: React.FC<ToothDetailModalProps> = ({
 
       await odontogramApi.createFinding(patientId, {
         toothNumber,
+        ...(encounterId ? { encounterId } : {}),
         findingType: newType,
         surfaces: isWholeToothOnlyType ? ['WHOLE_TOOTH'] : newSurfaces,
         notes: newNotes.trim() ? newNotes.trim() : null
@@ -226,12 +243,15 @@ export const ToothDetailModal: React.FC<ToothDetailModalProps> = ({
   };
 
   const handleResolveFinding = async (finding: DentalFindingItem) => {
+    if (readOnly) return;
+
     try {
       setActionSubmitting(true);
       setActionError(null);
 
       await odontogramApi.resolveFinding(patientId, finding.id, {
         expectedVersion: finding.version,
+        ...(encounterId ? { resolutionEncounterId: encounterId } : {}),
         resolutionNotes: resolutionNotes.trim() ? resolutionNotes.trim() : null
       });
 
@@ -259,6 +279,8 @@ export const ToothDetailModal: React.FC<ToothDetailModalProps> = ({
   };
 
   const handleCancelFinding = async (finding: DentalFindingItem) => {
+    if (readOnly || encounterId) return;
+
     if (!cancellationReason.trim()) {
       setActionError('El motivo de cancelación es obligatorio.');
       return;
@@ -365,21 +387,23 @@ export const ToothDetailModal: React.FC<ToothDetailModalProps> = ({
               </span>
             )}
           </button>
-          <button
-            role="tab"
-            aria-selected={activeTab === 'ADD'}
-            aria-controls="tab-add-finding"
-            id="tab-btn-add"
-            onClick={() => setActiveTab('ADD')}
-            className={`py-3 px-3 text-sm font-semibold border-b-2 flex items-center gap-1.5 shrink-0 transition-colors ${
-              activeTab === 'ADD'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <PlusCircle size={16} />
-            Registrar Hallazgo
-          </button>
+          {!readOnly && (
+            <button
+              role="tab"
+              aria-selected={activeTab === 'ADD'}
+              aria-controls="tab-add-finding"
+              id="tab-btn-add"
+              onClick={() => setActiveTab('ADD')}
+              className={`py-3 px-3 text-sm font-semibold border-b-2 flex items-center gap-1.5 shrink-0 transition-colors ${
+                activeTab === 'ADD'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <PlusCircle size={16} />
+              Registrar Hallazgo
+            </button>
+          )}
           <button
             role="tab"
             aria-selected={activeTab === 'HISTORY'}
@@ -434,14 +458,16 @@ export const ToothDetailModal: React.FC<ToothDetailModalProps> = ({
                       <p className="text-sm font-medium text-slate-600 mb-2">
                         Esta pieza no tiene hallazgos clínicos activos.
                       </p>
-                      <button
-                        type="button"
-                        onClick={() => setActiveTab('ADD')}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition-colors shadow-xs"
-                      >
-                        <PlusCircle size={14} />
-                        Agregar Hallazgo
-                      </button>
+                      {!readOnly && (
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab('ADD')}
+                          className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold hover:bg-blue-700 transition-colors shadow-xs"
+                        >
+                          <PlusCircle size={14} />
+                          Agregar Hallazgo
+                        </button>
+                      )}
                     </div>
                   ) : (
                     data.activeFindings.map((finding) => (
@@ -553,15 +579,17 @@ export const ToothDetailModal: React.FC<ToothDetailModalProps> = ({
                               </button>
                             </div>
                           </div>
-                        ) : (
+                        ) : readOnly ? null : (
                           <div className="flex justify-end gap-2 pt-1">
-                            <button
-                              type="button"
-                              onClick={() => handleStartCancel(finding)}
-                              className="px-3 py-1.5 text-xs font-semibold text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                            >
-                              Cancelar
-                            </button>
+                            {!encounterId && (
+                              <button
+                                type="button"
+                                onClick={() => handleStartCancel(finding)}
+                                className="px-3 py-1.5 text-xs font-semibold text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              >
+                                Cancelar
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={() => handleStartResolve(finding)}

@@ -11,6 +11,7 @@ import type { DocumentCategory, AllowedMimeType } from '../types';
 
 interface UploadDocumentModalProps {
   patientId: string;
+  clinicalEncounterId?: string;
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -26,7 +27,12 @@ const CATEGORY_LABELS: Record<DocumentCategory, string> = {
   OTHER: 'Otro',
 };
 
-export function UploadDocumentModal({ patientId, onClose, onSuccess }: UploadDocumentModalProps) {
+export function UploadDocumentModal({
+  patientId,
+  clinicalEncounterId,
+  onClose,
+  onSuccess
+}: UploadDocumentModalProps) {
   const [file, setFile] = useState<File | null>(null);
   const [category, setCategory] = useState<DocumentCategory | ''>('');
   const [error, setError] = useState<string | null>(null);
@@ -80,6 +86,7 @@ export function UploadDocumentModal({ patientId, onClose, onSuccess }: UploadDoc
       // 1. Obtener URL de subida
       const uploadRes = await patientDocumentsApi.createUploadUrl({
         patientId,
+        ...(clinicalEncounterId ? { clinicalEncounterId } : {}),
         category: category as DocumentCategory,
         mimeType: file.type as AllowedMimeType,
         sizeBytes: file.size,

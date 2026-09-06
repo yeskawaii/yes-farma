@@ -6,6 +6,9 @@ import type { ClinicalEncounterDetail, VitalSignsInput, DiagnosisInput, Procedur
 import { ApiClientError } from '../../core/api/client';
 import { useAuth } from '../../core/auth/AuthProvider';
 
+import { OdontogramView } from '../odontogram/components/OdontogramView';
+import { PatientDocumentList } from '../patient-documents/components/PatientDocumentList';
+
 const narrativeFields = [
   'reasonForVisit',
   'relevantHistory',
@@ -56,11 +59,26 @@ type ProcedureFormState = {
 export function EncounterEditor() {
   const { patientId, encounterId } = useParams<{ patientId: string; encounterId: string }>();
   const navigate = useNavigate();
-  const { activeRole } = useAuth();
-  const canAddAmendment =
-    activeRole === 'OWNER' || activeRole === 'PROFESSIONAL';
+  const { activeRole, memberships, activeClinicId } = useAuth();
 
   const [data, setData] = useState<ClinicalEncounterDetail | null>(null);
+
+  const activeMembershipId =
+    memberships.find((membership) => membership.clinicId === activeClinicId)?.id ?? null;
+
+  const isAssignedClinicalActor =
+    Boolean(
+      data &&
+      activeMembershipId &&
+      data.professional.membershipId === activeMembershipId
+    ) &&
+    (activeRole === 'OWNER' || activeRole === 'PROFESSIONAL');
+
+  const canEditEncounter =
+    data?.status === 'DRAFT' && isAssignedClinicalActor;
+
+  const canAddAmendment =
+    data?.status === 'FINALIZED' && isAssignedClinicalActor;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -845,10 +863,18 @@ export function EncounterEditor() {
       </div>
 
       {/* Info Card */}
-      {data.status === 'DRAFT' ? (
+      {canEditEncounter ? (
         <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 text-blue-800 text-sm flex items-start gap-3 shadow-sm">
           <FileText className="shrink-0 mt-0.5" size={18} />
           <p>Esta consulta está en borrador. A continuación puedes capturar la información clínica.</p>
+        </div>
+      ) : data.status === 'DRAFT' ? (
+        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 text-slate-700 text-sm flex items-start gap-3 shadow-sm">
+          <FileText className="shrink-0 mt-0.5 text-slate-500" size={18} />
+          <p>
+            Esta consulta está en borrador y pertenece a {data.professional.displayName}.
+            Puedes consultarla, pero solo el profesional responsable puede modificarla o finalizarla.
+          </p>
         </div>
       ) : (
         <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 text-slate-700 text-sm flex items-start gap-3 shadow-sm">
@@ -923,7 +949,7 @@ export function EncounterEditor() {
       {/* Vitals Data Form */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
         <h2 className="text-lg font-bold text-slate-900 mb-6">Signos vitales</h2>
-        {data.status === 'DRAFT' ? (
+        {canEditEncounter ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {renderVitalInput('Presión sistólica', 'systolicBloodPressure', 'mmHg', 30, 300)}
             {renderVitalInput('Presión diastólica', 'diastolicBloodPressure', 'mmHg', 20, 200)}
@@ -955,7 +981,7 @@ export function EncounterEditor() {
       {/* Clinical Data Forms */}
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
         <h2 className="text-lg font-bold text-slate-900 mb-6">Consulta</h2>
-        {data.status === 'DRAFT' ? (
+        {canEditEncounter ? (
           <>
             {renderEditableField('Motivo de consulta', 'reasonForVisit', 5000)}
             {renderEditableField('Antecedentes relevantes', 'relevantHistory', 10000)}
@@ -974,7 +1000,7 @@ export function EncounterEditor() {
 
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
         <h2 className="text-lg font-bold text-slate-900 mb-6">Evaluación y plan</h2>
-        {data.status === 'DRAFT' ? (
+        {canEditEncounter ? (
           <>
             {renderEditableField('Exploración física', 'physicalExamination', 10000)}
             {renderEditableField('Indicaciones', 'indications', 10000)}
@@ -993,7 +1019,7 @@ export function EncounterEditor() {
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-lg font-bold text-slate-900">Diagnósticos</h2>
-          {data.status === 'DRAFT' && (
+          {canEditEncounter && (
             <button
               onClick={addDiagnosis}
               disabled={isSaving || isFinalizing || diagnosesForm.length >= 50}
@@ -1004,7 +1030,7 @@ export function EncounterEditor() {
           )}
         </div>
 
-        {data.status === 'DRAFT' ? (
+        {canEditEncounter ? (
           diagnosesForm.length === 0 ? (
             <p className="text-sm text-slate-500 italic text-center py-4">Sin diagnósticos registrados</p>
           ) : (
@@ -1125,7 +1151,7 @@ export function EncounterEditor() {
       <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-lg font-bold text-slate-900">Procedimientos</h2>
-          {data.status === 'DRAFT' && (
+          {canEditEncounter && (
             <button
               onClick={addProcedure}
               disabled={isSaving || isFinalizing || proceduresForm.length >= 50}
@@ -1136,7 +1162,7 @@ export function EncounterEditor() {
           )}
         </div>
 
-        {data.status === 'DRAFT' ? (
+        {canEditEncounter ? (
           proceduresForm.length === 0 ? (
             <p className="text-sm text-slate-500 italic text-center py-4">Sin procedimientos registrados</p>
           ) : (
@@ -1260,7 +1286,7 @@ export function EncounterEditor() {
           )
         )}
 
-        {data.status === 'DRAFT' && (
+        {canEditEncounter && (
           <div className="flex flex-col gap-4 mt-8 pt-6 border-t border-slate-200">
             <div className="flex items-center gap-4">
               <button
@@ -1305,6 +1331,22 @@ export function EncounterEditor() {
           </div>
         )}
       </div>
+
+      {patientId && encounterId && (
+        <>
+          <OdontogramView
+            patientId={patientId}
+            encounterId={encounterId}
+            readOnly={!canEditEncounter}
+          />
+
+          <PatientDocumentList
+            patientId={patientId}
+            clinicalEncounterId={encounterId}
+            readOnly={!canEditEncounter}
+          />
+        </>
+      )}
 
       {data.status === 'FINALIZED' && (
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
