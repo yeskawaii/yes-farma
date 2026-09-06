@@ -3,6 +3,7 @@ import {
   CreateAuditEventDto,
   CreatePatientDocumentDto,
   IPatientDocumentRepository,
+  PatientDocumentEncounterContext,
 } from '../application/IPatientDocumentRepository';
 
 type PrismaTxDelegate = Omit<
@@ -26,11 +27,20 @@ export class PrismaPatientDocumentRepository implements IPatientDocumentReposito
     return patient;
   }
 
-  async findEncounter(clinicId: string, patientId: string, encounterId: string): Promise<{ id: string } | null> {
+  async findEncounter(
+    clinicId: string,
+    patientId: string,
+    encounterId: string
+  ): Promise<PatientDocumentEncounterContext | null> {
     const encounter = await this.prisma.clinicalEncounter.findFirst({
       where: { clinicId, patientId, id: encounterId },
-      select: { id: true },
+      select: {
+        id: true,
+        professionalMembershipId: true,
+        status: true,
+      },
     });
+
     return encounter;
   }
 

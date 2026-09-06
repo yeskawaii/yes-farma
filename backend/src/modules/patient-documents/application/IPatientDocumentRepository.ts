@@ -26,9 +26,19 @@ export interface CreateAuditEventDto {
   metadata?: Prisma.InputJsonValue;
 }
 
+export interface PatientDocumentEncounterContext {
+  id: string;
+  professionalMembershipId: string;
+  status: 'DRAFT' | 'FINALIZED';
+}
+
 export interface IPatientDocumentRepository {
   findPatient(clinicId: string, patientId: string): Promise<{ id: string } | null>;
-  findEncounter(clinicId: string, patientId: string, encounterId: string): Promise<{ id: string } | null>;
+  findEncounter(
+    clinicId: string,
+    patientId: string,
+    encounterId: string
+  ): Promise<PatientDocumentEncounterContext | null>;
   createDocument(data: CreatePatientDocumentDto): Promise<PatientDocument>;
   findDocumentById(clinicId: string, documentId: string): Promise<PatientDocument | null>;
   completeUploadAtomic(clinicId: string, documentId: string): Promise<{ count: number }>;

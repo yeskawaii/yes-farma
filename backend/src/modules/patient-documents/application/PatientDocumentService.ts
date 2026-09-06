@@ -58,6 +58,45 @@ export class PatientDocumentService {
     }
   ) { }
 
+  private async validateEncounterContext(
+    repo: IPatientDocumentRepository,
+    clinicId: string,
+    patientId: string,
+    encounterId: string,
+    membershipId: string,
+    requireDraft: boolean
+  ): Promise<void> {
+    const encounter = await repo.findEncounter(
+      clinicId,
+      patientId,
+      encounterId
+    );
+
+    if (!encounter) {
+      throw new AppError(
+        'NOT_FOUND',
+        'Encuentro clínico no encontrado o no pertenece a este paciente.',
+        404
+      );
+    }
+
+    if (encounter.professionalMembershipId !== membershipId) {
+      throw new AppError(
+        'FORBIDDEN',
+        'Sólo el profesional responsable de la consulta puede modificar documentos vinculados a ella.',
+        403
+      );
+    }
+
+    if (requireDraft && encounter.status !== 'DRAFT') {
+      throw new AppError(
+        'CLINICAL_ENCOUNTER_FINALIZED',
+        'La consulta clínica está finalizada y no admite nuevos cambios clínicos.',
+        409
+      );
+    }
+  }
+
   async createUploadUrl(
     clinicId: string,
     membershipId: string,
@@ -70,24 +109,22 @@ export class PatientDocumentService {
       throw new AppError('NOT_FOUND', 'Paciente no encontrado.', 404);
     }
 
-    // Validate encounter if provided
-    if (input.clinicalEncounterId) {
-      const encounter = await this.prisma.findEncounter(
-        clinicId,
-        input.patientId,
-        input.clinicalEncounterId
-      );
-
-      if (!encounter) {
-        throw new AppError('NOT_FOUND', 'Encuentro clínico no encontrado o no pertenece a este paciente.', 404);
-      }
-    }
-
     // Create DB record
     const documentId = crypto.randomUUID();
     const storageKey = `clinics/${clinicId}/patients/${input.patientId}/documents/${documentId}/original`;
 
     const document = await this.prisma.$transaction(async (tx) => {
+      if (input.clinicalEncounterId) {
+        await this.validateEncounterContext(
+          tx,
+          clinicId,
+          input.patientId,
+          input.clinicalEncounterId,
+          membershipId,
+          true
+        );
+      }
+
       const doc = await tx.createDocument({
         id: documentId,
         clinicId,
@@ -121,6 +158,7 @@ export class PatientDocumentService {
 
   async completeUpload(
     clinicId: string,
+    membershipId: string,
     userId: string,
     documentId: string
   ) {
@@ -134,8 +172,21 @@ export class PatientDocumentService {
       throw new AppError('BAD_REQUEST', 'El documento está eliminado.', 400);
     }
 
+    if (document.clinicalEncounterId) {
+      await this.validateEncounterContext(
+        this.prisma,
+        clinicId,
+        document.patientId,
+        document.clinicalEncounterId,
+        membershipId,
+        document.status === 'PENDING'
+      );
+    }
+
     if (document.status === 'ACTIVE') {
-      // Idempotent success
+      // Idempotent success after contextual authorization.
+      // Historical ACTIVE documents remain readable/idempotent
+      // after their encounter is finalized.
       return toPublicDocument(document);
     }
 
@@ -162,6 +213,47 @@ export class PatientDocumentService {
 
     // Update status and audit atomically
     const updatedDocument = await this.prisma.$transaction(async (tx) => {
+      if (document.clinicalEncounterId) {
+        const currentDocument = await tx.findDocumentById(
+          clinicId,
+          documentId
+        );
+
+        if (!currentDocument) {
+          throw new AppError('NOT_FOUND', 'Documento no encontrado.', 404);
+        }
+
+        if (currentDocument.status === 'DELETED') {
+          throw new AppError(
+            'BAD_REQUEST',
+            'El documento está eliminado.',
+            400
+          );
+        }
+
+        if (currentDocument.status === 'ACTIVE') {
+          await this.validateEncounterContext(
+            tx,
+            clinicId,
+            currentDocument.patientId,
+            document.clinicalEncounterId,
+            membershipId,
+            false
+          );
+
+          return toPublicDocument(currentDocument);
+        }
+
+        await this.validateEncounterContext(
+          tx,
+          clinicId,
+          currentDocument.patientId,
+          document.clinicalEncounterId,
+          membershipId,
+          true
+        );
+      }
+
       const updateResult = await tx.completeUploadAtomic(clinicId, documentId);
 
       if (updateResult.count === 0) {
@@ -303,6 +395,17 @@ export class PatientDocumentService {
       throw new AppError('NOT_FOUND', 'Documento no encontrado.', 404);
     }
 
+    if (document.clinicalEncounterId) {
+      await this.validateEncounterContext(
+        this.prisma,
+        clinicId,
+        document.patientId,
+        document.clinicalEncounterId,
+        membershipId,
+        false
+      );
+    }
+
     if (document.status === 'DELETED') {
       return { success: true };
     }
@@ -312,7 +415,43 @@ export class PatientDocumentService {
     }
 
     const deletedDocument = await this.prisma.$transaction(async (tx) => {
-      const updateResult = await tx.softDeleteDocumentAtomic(clinicId, documentId, membershipId);
+      if (document.clinicalEncounterId) {
+        const currentDocument = await tx.findDocumentById(
+          clinicId,
+          documentId
+        );
+
+        if (!currentDocument) {
+          throw new AppError('NOT_FOUND', 'Documento no encontrado.', 404);
+        }
+
+        if (currentDocument.status === 'DELETED') {
+          return { success: true };
+        }
+
+        if (currentDocument.status === 'PENDING') {
+          throw new AppError(
+            'BAD_REQUEST',
+            'No se puede eliminar un documento pendiente. Complete la subida primero.',
+            400
+          );
+        }
+
+        await this.validateEncounterContext(
+          tx,
+          clinicId,
+          currentDocument.patientId,
+          document.clinicalEncounterId,
+          membershipId,
+          true
+        );
+      }
+
+      const updateResult = await tx.softDeleteDocumentAtomic(
+        clinicId,
+        documentId,
+        membershipId
+      );
 
       if (updateResult.count === 0) {
         const docFallback = await tx.findDocumentById(clinicId, documentId);

@@ -53,6 +53,7 @@ export class PatientDocumentController {
 
       const result = await service.completeUpload(
         ctx.clinicId,
+        ctx.membershipId,
         ctx.userId,
         id
       );

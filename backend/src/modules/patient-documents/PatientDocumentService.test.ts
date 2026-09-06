@@ -12,7 +12,13 @@ import type { PatientDocument } from '../../generated/prisma';
 const createFakeRepo = (overrides: Partial<IPatientDocumentRepository> = {}): IPatientDocumentRepository => {
   return {
     findPatient: async (clinicId, patientId) => patientId === 'patient-1' ? { id: 'patient-1' } : null,
-    findEncounter: async (clinicId, patientId, encounterId) => encounterId === 'encounter-1' ? { id: 'encounter-1' } : null,
+    findEncounter: async (clinicId, patientId, encounterId) => encounterId === 'encounter-1'
+      ? {
+          id: 'encounter-1',
+          professionalMembershipId: 'mem-1',
+          status: 'DRAFT'
+        }
+      : null,
     createDocument: async (data: CreatePatientDocumentDto) => ({ ...data, createdAt: new Date(), updatedAt: new Date(), deletedAt: null, deletedByMembershipId: null } as PatientDocument),
     findDocumentById: async (clinicId, documentId) => {
       if (documentId === 'doc-1') return { id: 'doc-1', clinicId: 'clinic-1', status: 'ACTIVE', storageKey: 'test-key', originalFileName: 'test.pdf', sizeBytes: 1024, mimeType: 'application/pdf', category: 'RADIOGRAPH' } as PatientDocument;
@@ -106,6 +112,287 @@ test('4. encounter de otro paciente -> rechazo', async () => {
   );
 });
 
+test('F4B.1 createUploadUrl rechaza encounter FINALIZED', async () => {
+  let createCalled = false;
+
+  const repo = createFakeRepo({
+    findEncounter: async () => ({
+      id: 'encounter-1',
+      professionalMembershipId: 'mem-1',
+      status: 'FINALIZED'
+    }),
+    createDocument: async (data) => {
+      createCalled = true;
+      return {
+        ...data,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        deletedAt: null,
+        deletedByMembershipId: null
+      } as PatientDocument;
+    }
+  });
+
+  const service = new PatientDocumentService(
+    repo,
+    createFakeStorageProvider(),
+    storageConfig
+  );
+
+  await assert.rejects(
+    () => service.createUploadUrl('clinic-1', 'mem-1', {
+      patientId: 'patient-1',
+      clinicalEncounterId: 'encounter-1',
+      category: 'RADIOGRAPH',
+      mimeType: 'application/pdf',
+      sizeBytes: 1024,
+      originalFileName: 'test.pdf'
+    }),
+    (err: unknown) =>
+      err instanceof AppError &&
+      err.code === 'CLINICAL_ENCOUNTER_FINALIZED' &&
+      err.statusCode === 409
+  );
+
+  assert.strictEqual(createCalled, false);
+});
+
+test('F4B.2 createUploadUrl rechaza encounter de otro profesional', async () => {
+  const repo = createFakeRepo({
+    findEncounter: async () => ({
+      id: 'encounter-1',
+      professionalMembershipId: 'mem-other',
+      status: 'DRAFT'
+    })
+  });
+
+  const service = new PatientDocumentService(
+    repo,
+    createFakeStorageProvider(),
+    storageConfig
+  );
+
+  await assert.rejects(
+    () => service.createUploadUrl('clinic-1', 'mem-1', {
+      patientId: 'patient-1',
+      clinicalEncounterId: 'encounter-1',
+      category: 'RADIOGRAPH',
+      mimeType: 'application/pdf',
+      sizeBytes: 1024,
+      originalFileName: 'test.pdf'
+    }),
+    (err: unknown) =>
+      err instanceof AppError &&
+      err.code === 'FORBIDDEN' &&
+      err.statusCode === 403
+  );
+});
+
+test('F4B.3 completeUpload revalida DRAFT dentro de la transacción', async () => {
+  let encounterReads = 0;
+  let atomicCalled = false;
+
+  const document = {
+    id: 'doc-1',
+    clinicId: 'clinic-1',
+    patientId: 'patient-1',
+    clinicalEncounterId: 'encounter-1',
+    status: 'PENDING',
+    storageKey: 'test-key',
+    originalFileName: 'test.pdf',
+    sizeBytes: 1024,
+    mimeType: 'application/pdf',
+    category: 'RADIOGRAPH',
+    createdAt: new Date()
+  } as PatientDocument;
+
+  const repo = createFakeRepo({
+    findDocumentById: async () => document,
+    findEncounter: async () => {
+      encounterReads++;
+
+      return {
+        id: 'encounter-1',
+        professionalMembershipId: 'mem-1',
+        status: encounterReads === 1 ? 'DRAFT' : 'FINALIZED'
+      };
+    },
+    completeUploadAtomic: async () => {
+      atomicCalled = true;
+      return { count: 1 };
+    }
+  });
+
+  const service = new PatientDocumentService(
+    repo,
+    createFakeStorageProvider(),
+    storageConfig
+  );
+
+  await assert.rejects(
+    () => service.completeUpload(
+      'clinic-1',
+      'mem-1',
+      'usr-1',
+      'doc-1'
+    ),
+    (err: unknown) =>
+      err instanceof AppError &&
+      err.code === 'CLINICAL_ENCOUNTER_FINALIZED' &&
+      err.statusCode === 409
+  );
+
+  assert.strictEqual(encounterReads, 2);
+  assert.strictEqual(atomicCalled, false);
+});
+
+test('F4B.4 ACTIVE contextual sigue idempotente tras FINALIZED para su profesional', async () => {
+  let txCalled = false;
+
+  const repo = createFakeRepo({
+    findDocumentById: async () => ({
+      id: 'doc-1',
+      clinicId: 'clinic-1',
+      patientId: 'patient-1',
+      clinicalEncounterId: 'encounter-1',
+      status: 'ACTIVE',
+      storageKey: 'test-key',
+      originalFileName: 'test.pdf',
+      sizeBytes: 1024,
+      mimeType: 'application/pdf',
+      category: 'RADIOGRAPH',
+      createdAt: new Date()
+    } as PatientDocument),
+    findEncounter: async () => ({
+      id: 'encounter-1',
+      professionalMembershipId: 'mem-1',
+      status: 'FINALIZED'
+    }),
+    $transaction: async <T>(
+      cb: (tx: IPatientDocumentRepository) => Promise<T>
+    ) => {
+      txCalled = true;
+      return cb(repo);
+    }
+  });
+
+  const service = new PatientDocumentService(
+    repo,
+    createFakeStorageProvider(),
+    storageConfig
+  );
+
+  const result = await service.completeUpload(
+    'clinic-1',
+    'mem-1',
+    'usr-1',
+    'doc-1'
+  );
+
+  assert.strictEqual(result.id, 'doc-1');
+  assert.strictEqual(txCalled, false);
+});
+
+test('F4B.5 ACTIVE contextual autoriza antes del éxito idempotente', async () => {
+  const repo = createFakeRepo({
+    findDocumentById: async () => ({
+      id: 'doc-1',
+      clinicId: 'clinic-1',
+      patientId: 'patient-1',
+      clinicalEncounterId: 'encounter-1',
+      status: 'ACTIVE',
+      storageKey: 'test-key',
+      originalFileName: 'test.pdf',
+      sizeBytes: 1024,
+      mimeType: 'application/pdf',
+      category: 'RADIOGRAPH',
+      createdAt: new Date()
+    } as PatientDocument),
+    findEncounter: async () => ({
+      id: 'encounter-1',
+      professionalMembershipId: 'mem-other',
+      status: 'FINALIZED'
+    })
+  });
+
+  const service = new PatientDocumentService(
+    repo,
+    createFakeStorageProvider(),
+    storageConfig
+  );
+
+  await assert.rejects(
+    () => service.completeUpload(
+      'clinic-1',
+      'mem-1',
+      'usr-1',
+      'doc-1'
+    ),
+    (err: unknown) =>
+      err instanceof AppError &&
+      err.code === 'FORBIDDEN' &&
+      err.statusCode === 403
+  );
+});
+
+test('F4B.6 deleteDocument revalida DRAFT dentro de la transacción', async () => {
+  let encounterReads = 0;
+  let deleteCalled = false;
+
+  const document = {
+    id: 'doc-1',
+    clinicId: 'clinic-1',
+    patientId: 'patient-1',
+    clinicalEncounterId: 'encounter-1',
+    status: 'ACTIVE',
+    storageKey: 'test-key',
+    originalFileName: 'test.pdf',
+    sizeBytes: 1024,
+    mimeType: 'application/pdf',
+    category: 'RADIOGRAPH',
+    createdAt: new Date()
+  } as PatientDocument;
+
+  const repo = createFakeRepo({
+    findDocumentById: async () => document,
+    findEncounter: async () => {
+      encounterReads++;
+
+      return {
+        id: 'encounter-1',
+        professionalMembershipId: 'mem-1',
+        status: encounterReads === 1 ? 'DRAFT' : 'FINALIZED'
+      };
+    },
+    softDeleteDocumentAtomic: async () => {
+      deleteCalled = true;
+      return { count: 1 };
+    }
+  });
+
+  const service = new PatientDocumentService(
+    repo,
+    createFakeStorageProvider(),
+    storageConfig
+  );
+
+  await assert.rejects(
+    () => service.deleteDocument(
+      'clinic-1',
+      'mem-1',
+      'usr-1',
+      'doc-1'
+    ),
+    (err: unknown) =>
+      err instanceof AppError &&
+      err.code === 'CLINICAL_ENCOUNTER_FINALIZED' &&
+      err.statusCode === 409
+  );
+
+  assert.strictEqual(encounterReads, 2);
+  assert.strictEqual(deleteCalled, false);
+});
+
 test('5. MIME no permitido -> rechazo', () => {
   assert.throws(() => uploadDocumentSchema.parse({
     patientId: '123e4567-e89b-12d3-a456-426614174000',
@@ -176,7 +463,7 @@ test('9. complete con objeto inexistente -> rechazo', async () => {
   const service = new PatientDocumentService(repo, provider, storageConfig);
 
   await assert.rejects(
-    () => service.completeUpload('clinic-1', 'usr-1', 'doc-1'),
+    () => service.completeUpload('clinic-1', 'mem-1', 'usr-1', 'doc-1'),
     (err: unknown) => err instanceof AppError && err.statusCode === 400 && err.message.includes('subido')
   );
 });
@@ -191,7 +478,7 @@ test('10. complete con tamaño distinto -> rechazo', async () => {
   const service = new PatientDocumentService(repo, provider, storageConfig);
 
   await assert.rejects(
-    () => service.completeUpload('clinic-1', 'usr-1', 'doc-1'),
+    () => service.completeUpload('clinic-1', 'mem-1', 'usr-1', 'doc-1'),
     (err: unknown) => err instanceof AppError && err.statusCode === 400 && err.message.includes('tamaño')
   );
 });
@@ -206,7 +493,7 @@ test('11. complete con MIME distinto -> rechazo', async () => {
   const service = new PatientDocumentService(repo, provider, storageConfig);
 
   await assert.rejects(
-    () => service.completeUpload('clinic-1', 'usr-1', 'doc-1'),
+    () => service.completeUpload('clinic-1', 'mem-1', 'usr-1', 'doc-1'),
     (err: unknown) => err instanceof AppError && err.statusCode === 400 && err.message.includes('tipo')
   );
 });
@@ -227,7 +514,7 @@ test('12. complete correcto -> ACTIVE', async () => {
   const provider = createFakeStorageProvider();
   const service = new PatientDocumentService(repo, provider, storageConfig);
 
-  const res = await service.completeUpload('clinic-1', 'usr-1', 'doc-1');
+  const res = await service.completeUpload('clinic-1', 'mem-1', 'usr-1', 'doc-1');
   assert.strictEqual(res.id, 'doc-1');
   assert.strictEqual(docStatus, 'ACTIVE');
   assert.ok(!('storageKey' in res));
@@ -242,7 +529,7 @@ test('13. complete ACTIVE idempotente', async () => {
   const provider = createFakeStorageProvider();
   const service = new PatientDocumentService(repo, provider, storageConfig);
 
-  const res = await service.completeUpload('clinic-1', 'usr-1', 'doc-1');
+  const res = await service.completeUpload('clinic-1', 'mem-1', 'usr-1', 'doc-1');
 
   assert.strictEqual(res.id, 'doc-1');
   assert.strictEqual(txCalled, false);
@@ -394,7 +681,7 @@ test('22. completeUpload rechaza contenido que no coincide con mimeType', async 
   const service = new PatientDocumentService(repo, provider, storageConfig);
 
   await assert.rejects(
-    () => service.completeUpload('clinic-1', 'usr-1', 'doc-1'),
+    () => service.completeUpload('clinic-1', 'mem-1', 'usr-1', 'doc-1'),
     (err: unknown) => err instanceof AppError && err.statusCode === 400 && err.message.includes('contenido del archivo')
   );
 });
@@ -469,7 +756,7 @@ test('24. completeUpload concurrencia - ganador (count === 1)', async () => {
     }
   });
   const service = new PatientDocumentService(repo, createFakeStorageProvider(), storageConfig);
-  const doc = await service.completeUpload('clinic-1', 'usr-1', 'doc-1');
+  const doc = await service.completeUpload('clinic-1', 'mem-1', 'usr-1', 'doc-1');
   assert.strictEqual(doc.id, 'doc-1');
   assert.strictEqual(auditCount, 1);
 });
@@ -499,7 +786,7 @@ test('25. completeUpload concurrencia - perdedor con ACTIVE', async () => {
     }
   });
   const service = new PatientDocumentService(repo, createFakeStorageProvider(), storageConfig);
-  const doc = await service.completeUpload('clinic-1', 'usr-1', 'doc-1');
+  const doc = await service.completeUpload('clinic-1', 'mem-1', 'usr-1', 'doc-1');
   assert.strictEqual(doc.id, 'doc-1');
   assert.strictEqual(auditCount, 0);
 });
@@ -517,7 +804,7 @@ test('26. completeUpload concurrencia - perdedor con DELETED', async () => {
   });
   const service = new PatientDocumentService(repo, createFakeStorageProvider(), storageConfig);
   await assert.rejects(
-    () => service.completeUpload('clinic-1', 'usr-1', 'doc-1'),
+    () => service.completeUpload('clinic-1', 'mem-1', 'usr-1', 'doc-1'),
     (err: unknown) => err instanceof AppError && err.statusCode === 400 && err.message.includes('eliminado')
   );
 });
@@ -535,7 +822,7 @@ test('27. completeUpload concurrencia - perdedor con PENDING', async () => {
   });
   const service = new PatientDocumentService(repo, createFakeStorageProvider(), storageConfig);
   await assert.rejects(
-    () => service.completeUpload('clinic-1', 'usr-1', 'doc-1'),
+    () => service.completeUpload('clinic-1', 'mem-1', 'usr-1', 'doc-1'),
     (err: unknown) => err instanceof AppError && err.statusCode === 409 && err.message.includes('Conflicto')
   );
 });
