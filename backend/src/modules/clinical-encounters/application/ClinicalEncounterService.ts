@@ -1,5 +1,6 @@
 import type { Prisma, ClinicalEncounter, AuditEvent, PrismaClient } from '../../../generated/prisma';
 import { Prisma as PrismaNamespace } from '../../../generated/prisma';
+import { DentalCareService } from './DentalCareService';
 import { AppError } from '../../../shared/errors/AppError';
 import {
   CreateClinicalEncounterInput,
@@ -34,6 +35,25 @@ export class ClinicalEncounterService {
   }
 
   async createEncounter(clinicId: string, membershipId: string, actorUserId: string, actorRole: string, input: CreateClinicalEncounterInput) {
+    if (input.appointmentId) {
+      const result = await new DentalCareService(this.prisma).startCare(
+        { clinicId, membershipId, userId: actorUserId, role: actorRole },
+        input.appointmentId, input.patientId
+      );
+      const encounter = result.encounter;
+      return {
+        created: result.created,
+        id: encounter.id, occurredAt: encounter.occurredAt,
+        status: encounter.status, version: encounter.version,
+        patient: { id: encounter.patient.id, displayName: this.formatDisplayName(
+          encounter.patient.firstName, encounter.patient.lastName, encounter.patient.secondLastName) },
+        professional: { id: encounter.professional.id, displayName: this.formatDisplayName(
+          encounter.professional.user.firstName, encounter.professional.user.lastName) },
+        appointment: encounter.appointment,
+        createdAt: encounter.createdAt, updatedAt: encounter.updatedAt
+      };
+    }
+
     if (actorRole === 'ASSISTANT') {
       throw new AppError('FORBIDDEN', 'Rol no autorizado para crear encuentros clínicos', 403);
     }
@@ -61,38 +81,6 @@ export class ClinicalEncounterService {
         });
         if (!profMembership || profMembership.status !== 'ACTIVE') {
           throw new AppError('NOT_FOUND', 'Profesional no encontrado.', 404);
-        }
-
-        // Validate Appointment if provided
-        if (appointmentId) {
-          const appointment = await tx.appointment.findFirst({
-            where: { id: appointmentId, clinicId },
-            select: { id: true, patientId: true, professionalMembershipId: true, status: true }
-          });
-
-          if (!appointment) {
-            throw new AppError('NOT_FOUND', 'Cita no encontrada.', 404);
-          }
-          if (appointment.patientId !== patientId) {
-            throw new AppError('NOT_FOUND', 'La cita no pertenece a este paciente.', 404);
-          }
-          if (appointment.professionalMembershipId !== membershipId) {
-            throw new AppError('NOT_FOUND', 'La cita no pertenece a este profesional.', 404);
-          }
-          if (appointment.status === 'CANCELLED' || appointment.status === 'NO_SHOW' || appointment.status === 'COMPLETED') {
-            throw new AppError('INVALID_APPOINTMENT_STATE', `La cita en estado ${appointment.status} no puede iniciar un encuentro.`, 409);
-          }
-
-          // Update appointment status to IN_PROGRESS if SCHEDULED or CONFIRMED
-          if (appointment.status === 'SCHEDULED' || appointment.status === 'CONFIRMED') {
-            await tx.appointment.update({
-              where: { id: appointmentId },
-              data: {
-                status: 'IN_PROGRESS',
-                updatedByMembershipId: membershipId
-              }
-            });
-          }
         }
 
         // Create Encounter

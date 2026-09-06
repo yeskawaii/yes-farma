@@ -13,6 +13,7 @@ export const createAppointmentRoutes = (controller: AppointmentController): Rout
   router.post('/', controller.create);
   router.get('/professionals', controller.listProfessionals);
   router.get('/:id', controller.getById);
+  router.post('/:id/start-care', controller.startCare);
   router.patch('/:id', controller.update);
   router.patch('/:id/status', controller.updateStatus);
   router.patch('/:id/cancel', controller.cancel);

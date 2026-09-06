@@ -4,6 +4,7 @@ import { env, getWhatsAppAuthDir } from '../config/env';
 import { IClock, SystemClock } from '../shared/clock/ClockPort';
 import { AppointmentNotificationOutboxAdapter } from '../modules/notifications/infrastructure/AppointmentNotificationOutboxAdapter';
 import { AppointmentService, IAppointmentRepository } from '../modules/appointments/application/AppointmentService';
+import { DentalCareService } from '../modules/clinical-encounters/application/DentalCareService';
 import { AppointmentController } from '../modules/appointments/infrastructure/AppointmentController';
 import { createAppointmentRoutes } from '../modules/appointments/infrastructure/appointmentRoutes';
 import { PrismaNotificationJobRepository } from '../modules/notifications/infrastructure/PrismaNotificationJobRepository';
@@ -38,7 +39,7 @@ export const buildCompositionRoot = (options?: CompositionRootOptions): AppCompo
 
   const notificationPort = new AppointmentNotificationOutboxAdapter(clock);
   const appointmentService = new AppointmentService(db as unknown as IAppointmentRepository, notificationPort);
-  const appointmentController = new AppointmentController(appointmentService);
+  const appointmentController = new AppointmentController(appointmentService, new DentalCareService(db, clock));
   const appointmentRoutes = createAppointmentRoutes(appointmentController);
 
   const workerEnabled = options?.workerEnabled ?? env.NOTIFICATION_WORKER_ENABLED;

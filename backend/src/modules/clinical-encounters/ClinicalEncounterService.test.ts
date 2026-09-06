@@ -180,137 +180,8 @@ test('ClinicalEncounterService', async (t) => {
     });
   });
 
-  await t.test('Appointment Linked Creation', async (sub) => {
-
-    await sub.test('13. cita de otro tenant devuelve 404', async () => {
-      const prisma = createMockPrisma({
-        appointment: { findFirst: async () => null } as unknown as IClinicalEncounterRepository['appointment']
-      });
-      const svc = new ClinicalEncounterService(prisma);
-      await assert.rejects(
-        svc.createEncounter('c1', 'm1', 'u1', 'PROFESSIONAL', { patientId: '2b4c1fc9-b52e-4b42-8c10-09c3132e0cd2', appointmentId: 'app-1', occurredAt: '2026-08-04T10:00:00Z' }),
-        (err: unknown) => err instanceof AppError && err.code === 'NOT_FOUND'
-      );
-    });
-
-    await sub.test('14. cita de otro paciente devuelve 404', async () => {
-      const prisma = createMockPrisma({
-        appointment: { findFirst: async () => ({ id: 'app-1', patientId: 'other-patient', professionalMembershipId: 'm1', status: 'SCHEDULED' }) } as unknown as IClinicalEncounterRepository['appointment']
-      });
-      const svc = new ClinicalEncounterService(prisma);
-      await assert.rejects(
-        svc.createEncounter('c1', 'm1', 'u1', 'PROFESSIONAL', { patientId: '2b4c1fc9-b52e-4b42-8c10-09c3132e0cd2', appointmentId: 'app-1', occurredAt: '2026-08-04T10:00:00Z' }),
-        (err: unknown) => err instanceof AppError && err.code === 'NOT_FOUND'
-      );
-    });
-
-    await sub.test('15. cita de otro profesional devuelve 404', async () => {
-      const prisma = createMockPrisma({
-        appointment: { findFirst: async () => ({ id: 'app-1', patientId: '2b4c1fc9-b52e-4b42-8c10-09c3132e0cd2', professionalMembershipId: 'other-prof', status: 'SCHEDULED' }) } as unknown as IClinicalEncounterRepository['appointment']
-      });
-      const svc = new ClinicalEncounterService(prisma);
-      await assert.rejects(
-        svc.createEncounter('c1', 'm1', 'u1', 'PROFESSIONAL', { patientId: '2b4c1fc9-b52e-4b42-8c10-09c3132e0cd2', appointmentId: 'app-1', occurredAt: '2026-08-04T10:00:00Z' }),
-        (err: unknown) => err instanceof AppError && err.code === 'NOT_FOUND'
-      );
-    });
-
-    await sub.test('16. cita CANCELLED se rechaza', async () => {
-      const prisma = createMockPrisma({
-        appointment: { findFirst: async () => ({ id: 'app-1', patientId: 'p1', professionalMembershipId: 'm1', status: 'CANCELLED' }) } as unknown as IClinicalEncounterRepository['appointment']
-      });
-      const svc = new ClinicalEncounterService(prisma);
-      await assert.rejects(
-        svc.createEncounter('c1', 'm1', 'u1', 'PROFESSIONAL', { patientId: 'p1', appointmentId: 'app-1', occurredAt: '2026-08-04T10:00:00Z' }),
-        (err: unknown) => err instanceof AppError && err.code === 'INVALID_APPOINTMENT_STATE'
-      );
-    });
-
-    await sub.test('17. cita NO_SHOW se rechaza', async () => {
-      const prisma = createMockPrisma({
-        appointment: { findFirst: async () => ({ id: 'app-1', patientId: 'p1', professionalMembershipId: 'm1', status: 'NO_SHOW' }) } as unknown as IClinicalEncounterRepository['appointment']
-      });
-      const svc = new ClinicalEncounterService(prisma);
-      await assert.rejects(
-        svc.createEncounter('c1', 'm1', 'u1', 'PROFESSIONAL', { patientId: 'p1', appointmentId: 'app-1', occurredAt: '2026-08-04T10:00:00Z' }),
-        (err: unknown) => err instanceof AppError && err.code === 'INVALID_APPOINTMENT_STATE'
-      );
-    });
-
-    await sub.test('18. cita COMPLETED se rechaza', async () => {
-      const prisma = createMockPrisma({
-        appointment: { findFirst: async () => ({ id: 'app-1', patientId: 'p1', professionalMembershipId: 'm1', status: 'COMPLETED' }) } as unknown as IClinicalEncounterRepository['appointment']
-      });
-      const svc = new ClinicalEncounterService(prisma);
-      await assert.rejects(
-        svc.createEncounter('c1', 'm1', 'u1', 'PROFESSIONAL', { patientId: 'p1', appointmentId: 'app-1', occurredAt: '2026-08-04T10:00:00Z' }),
-        (err: unknown) => err instanceof AppError && err.code === 'INVALID_APPOINTMENT_STATE'
-      );
-    });
-
-    await sub.test('19. SCHEDULED pasa a IN_PROGRESS', async () => {
-      let updatedData: unknown = null;
-      const prisma = createMockPrisma({
-        appointment: {
-          findFirst: async () => ({ id: 'app-1', patientId: 'p1', professionalMembershipId: 'm1', status: 'SCHEDULED' }),
-          update: async (args: unknown) => {
-            updatedData = (args as { data: unknown }).data;
-            return { id: 'app-1' };
-          }
-        } as unknown as IClinicalEncounterRepository['appointment'],
-        clinicalEncounter: {
-          create: async () => ({ id: 'e1', patient: { firstName: '' }, professional: { user: { firstName: '' } } })
-        } as unknown as IClinicalEncounterRepository['clinicalEncounter']
-      });
-      const svc = new ClinicalEncounterService(prisma);
-      await svc.createEncounter('c1', 'm1', 'u1', 'PROFESSIONAL', { patientId: 'p1', appointmentId: 'app-1', occurredAt: '2026-08-04T10:00:00Z' });
-      assert.strictEqual((updatedData as { status: string }).status, 'IN_PROGRESS');
-    });
-
-    await sub.test('20. CONFIRMED pasa a IN_PROGRESS', async () => {
-      let updatedData: unknown = null;
-      const prisma = createMockPrisma({
-        appointment: {
-          findFirst: async () => ({ id: 'app-1', patientId: 'p1', professionalMembershipId: 'm1', status: 'CONFIRMED' }),
-          update: async (args: unknown) => {
-            updatedData = (args as { data: unknown }).data;
-            return { id: 'app-1' };
-          }
-        } as unknown as IClinicalEncounterRepository['appointment'],
-        clinicalEncounter: {
-          create: async () => ({ id: 'e1', patient: { firstName: '' }, professional: { user: { firstName: '' } } })
-        } as unknown as IClinicalEncounterRepository['clinicalEncounter']
-      });
-      const svc = new ClinicalEncounterService(prisma);
-      await svc.createEncounter('c1', 'm1', 'u1', 'PROFESSIONAL', { patientId: 'p1', appointmentId: 'app-1', occurredAt: '2026-08-04T10:00:00Z' });
-      assert.strictEqual((updatedData as { status: string }).status, 'IN_PROGRESS');
-    });
-
-    await sub.test('21. IN_PROGRESS se conserva', async () => {
-      let updatedCalled = false;
-      const prisma = createMockPrisma({
-        appointment: {
-          findFirst: async () => ({ id: 'app-1', patientId: 'p1', professionalMembershipId: 'm1', status: 'IN_PROGRESS' }),
-          update: async () => {
-            updatedCalled = true;
-            return { id: 'app-1' };
-          }
-        } as unknown as IClinicalEncounterRepository['appointment'],
-        clinicalEncounter: {
-          create: async () => ({ id: 'e1', patient: { firstName: '' }, professional: { user: { firstName: '' } } })
-        } as unknown as IClinicalEncounterRepository['clinicalEncounter']
-      });
-      const svc = new ClinicalEncounterService(prisma);
-      await svc.createEncounter('c1', 'm1', 'u1', 'PROFESSIONAL', { patientId: 'p1', appointmentId: 'app-1', occurredAt: '2026-08-04T10:00:00Z' });
-      assert.strictEqual(updatedCalled, false);
-    });
-
-    await sub.test('22. cita ya vinculada devuelve APPOINTMENT_ALREADY_HAS_ENCOUNTER', async () => {
-      // Testing this scenario specifically by translating Prisma unique constraint on appointmentId. (P2002)
-      // Done in 26.
-      assert.ok(true);
-    });
-
+  // Linked creation/state/uniqueness cases now live in DentalCareService.test.ts.
+  await t.test('Independent creation transaction regressions', async (sub) => {
     await sub.test('23. usa transacción Serializable', async () => {
       let txOpts: unknown = null;
       const prisma = createMockPrisma({
@@ -362,19 +233,6 @@ test('ClinicalEncounterService', async (t) => {
       assert.strictEqual(tries, 1);
     });
 
-    await sub.test('26. P2002 de appointmentId se traduce de forma específica', async () => {
-      const prisma = createMockPrisma({
-        $transaction: async () => {
-          const err = new Prisma.PrismaClientKnownRequestError('Unique constraint', { code: 'P2002', clientVersion: '1', meta: { target: ['appointmentId'] } });
-          throw err;
-        }
-      });
-      const svc = new ClinicalEncounterService(prisma);
-      await assert.rejects(
-        svc.createEncounter('c1', 'm1', 'u1', 'PROFESSIONAL', { patientId: 'p1', appointmentId: 'app1', occurredAt: '2026-08-04T10:00:00Z' }),
-        (err: unknown) => err instanceof AppError && err.code === 'APPOINTMENT_ALREADY_HAS_ENCOUNTER'
-      );
-    });
   });
 
   await t.test('GET /api/clinical-encounters (Listado)', async (sub) => {

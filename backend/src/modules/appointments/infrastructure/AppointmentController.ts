@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { DentalCareService, toStartCareResponse } from '../../clinical-encounters/application/DentalCareService';
 import { AppointmentService } from '../application/AppointmentService';
 import {
   createAppointmentSchema,
@@ -18,7 +19,23 @@ const getAuthCtx = (req: Request): AuthContext => {
 };
 
 export class AppointmentController {
-  constructor(private readonly appointmentService: AppointmentService) {}
+  constructor(private readonly appointmentService: AppointmentService,
+    private readonly dentalCareService: DentalCareService) {}
+
+  startCare = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const ctx = getAuthCtx(req);
+      const id = z.string().uuid().parse(req.params.id);
+      z.object({}).strict().parse(req.body);
+      const result = await this.dentalCareService.startCare(ctx, id);
+      res.status(result.created ? 201 : 200).json(toStartCareResponse(result));
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return next(new AppError('VALIDATION_ERROR', 'Datos inválidos', 400));
+      }
+      next(error);
+    }
+  };
 
   list = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {

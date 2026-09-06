@@ -36,7 +36,12 @@ export class ClinicalEncounterController {
         input
       );
 
-      res.status(201).json(result);
+      if ('created' in result) {
+        const { created, ...encounter } = result;
+        res.status(created ? 201 : 200).json(encounter);
+      } else {
+        res.status(201).json(result);
+      }
     } catch (error: unknown) {
       if (error instanceof z.ZodError) {
         return next(new AppError('VALIDATION_ERROR', 'Datos inválidos', 400));
