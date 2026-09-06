@@ -39,7 +39,7 @@ const createMockPrisma = (overrides: MockRepositoryOverrides = {}): IClinicalEnc
     clinicalProcedure: {} as unknown as IClinicalEncounterRepository['clinicalProcedure'],
     auditEvent: auditEventMethods as unknown as IClinicalEncounterRepository['auditEvent'],
     patient: {} as IClinicalEncounterRepository['patient'],
-    membership: {} as IClinicalEncounterRepository['membership'],
+    membership: { findFirst: async () => ({ status: 'ACTIVE', role: 'PROFESSIONAL', user: { status: 'ACTIVE' } }) } as unknown as IClinicalEncounterRepository['membership'],
     appointment: {} as IClinicalEncounterRepository['appointment'],
     $transaction: overrides.$transaction || (async <T>(cb: (tx: IPrismaTxEncounter) => Promise<T>): Promise<T> => {
       return cb(repository as unknown as IPrismaTxEncounter);
@@ -141,23 +141,18 @@ test('version desactualizada devuelve 409', async () => {
   );
 });
 
-test('intentar finalizar FINALIZED devuelve 409', async () => {
+test('consulta independiente FINALIZED devuelve el estado existente sin escrituras', async () => {
   const prisma = createMockPrisma({
     clinicalEncounter: {
-      findFirst: async () => ({ id: 'enc-1', status: 'FINALIZED', version: 1, professionalMembershipId: 'm1' })
-    }
+      findFirst: async () => ({ id: 'enc-1', appointmentId: null, status: 'FINALIZED', version: 2, professionalMembershipId: 'm1' }),
+      updateMany: async () => { assert.fail('No debe actualizar una consulta finalizada'); }
+    },
+    auditEvent: { create: async () => { assert.fail('No debe duplicar auditoría'); } }
   });
   const service = new ClinicalEncounterService(prisma);
-
-  await assert.rejects(
-    () => service.finalizeEncounter('c1', 'enc-1', 'm1', 'u1', 'PROFESSIONAL', 1),
-    (err: unknown) => {
-      assert.ok(err instanceof AppError);
-      assert.equal(err.statusCode, 409);
-      assert.equal(err.code, 'CLINICAL_ENCOUNTER_FINALIZED');
-      return true;
-    }
-  );
+  const existing = { id: 'enc-1', status: 'FINALIZED', version: 2 } as Awaited<ReturnType<ClinicalEncounterService['getEncounterById']>>;
+  service.getEncounterById = async () => existing;
+  assert.strictEqual(await service.finalizeEncounter('c1', 'enc-1', 'm1', 'u1', 'PROFESSIONAL', 1), existing);
 });
 
 test('otro profesional no puede finalizar', async () => {

@@ -53,6 +53,108 @@ export class DentalCareService {
   constructor(private readonly repository: IDentalCareRepository,
     private readonly clock: IClock = new SystemClock()) {}
 
+  async finalizeCare(actor: DentalCareActor, encounterId: string, version: number): Promise<void> {
+    const { clinicId, membershipId, userId, role } = actor;
+    if (role !== 'OWNER' && role !== 'PROFESSIONAL') {
+      throw new AppError('FORBIDDEN', 'Rol no autorizado para finalizar encuentros clínicos.', 403);
+    }
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await this.repository.$transaction(async (tx) => {
+          // Locate the optional link first. Prisma findFirst does not acquire a
+          // FOR UPDATE lock. Subsequent reads and writes use Appointment -> Encounter;
+          // Serializable + conditional updates protect the snapshot without manual SQL.
+          const link = await tx.clinicalEncounter.findFirst({
+            where: { id: encounterId, clinicId },
+            select: { appointmentId: true }
+          });
+          if (!link) throw new AppError('NOT_FOUND', 'Encuentro no encontrado.', 404);
+
+          const appointment = link.appointmentId
+            ? await tx.appointment.findFirst({ where: { id: link.appointmentId, clinicId } })
+            : null;
+          if (link.appointmentId && !appointment) {
+            throw new AppError('NOT_FOUND', 'Cita no encontrada.', 404);
+          }
+          const encounter = await tx.clinicalEncounter.findFirst({
+            where: { id: encounterId, clinicId },
+            select: { id: true, appointmentId: true, patientId: true, professionalMembershipId: true,
+              status: true, version: true }
+          });
+          if (!encounter) throw new AppError('NOT_FOUND', 'Encuentro no encontrado.', 404);
+
+          const membership = await tx.membership.findFirst({
+            where: { id: membershipId, clinicId, userId },
+            select: { status: true, role: true, user: { select: { status: true } } }
+          });
+          if (!membership || membership.status !== 'ACTIVE' || membership.role !== role ||
+            membership.user.status !== 'ACTIVE' || encounter.professionalMembershipId !== membershipId) {
+            throw new AppError('FORBIDDEN', 'Solo el profesional responsable puede finalizar este encuentro.', 403);
+          }
+
+          const inconsistent = () => new AppError('CARE_STATE_INCONSISTENT',
+            'Los estados o vínculos de la cita y consulta son inconsistentes.', 409);
+          if (appointment) {
+            if (encounter.appointmentId !== appointment.id || encounter.patientId !== appointment.patientId ||
+              encounter.professionalMembershipId !== appointment.professionalMembershipId) throw inconsistent();
+            if (encounter.status === 'FINALIZED' && appointment.status === 'COMPLETED') return;
+            if (encounter.status !== 'DRAFT' || appointment.status !== 'IN_PROGRESS') throw inconsistent();
+          } else if (encounter.status === 'FINALIZED') {
+            return;
+          }
+
+          if (encounter.version !== version) {
+            throw new AppError('CLINICAL_ENCOUNTER_VERSION_CONFLICT',
+              'Conflicto de versión. El encuentro ha sido modificado por otro proceso.', 409);
+          }
+
+          // Acquire write locks in the same entity order as startCare. A later
+          // encounter/version/audit failure rolls back this appointment update too.
+          if (appointment) {
+            const result = await tx.appointment.updateMany({
+              where: { id: appointment.id, clinicId, status: 'IN_PROGRESS',
+                patientId: encounter.patientId, professionalMembershipId: membershipId },
+              data: { status: 'COMPLETED', updatedByMembershipId: membershipId }
+            });
+            if (result.count !== 1) throw inconsistent();
+          }
+
+          const result = await tx.clinicalEncounter.updateMany({
+            where: { id: encounterId, clinicId, status: 'DRAFT', version,
+              professionalMembershipId: membershipId, appointmentId: encounter.appointmentId },
+            data: { status: 'FINALIZED', finalizedAt: this.clock.now(), finalizedByMembershipId: membershipId,
+              version: { increment: 1 }, updatedByMembershipId: membershipId }
+          });
+          if (result.count !== 1) {
+            throw new AppError('CLINICAL_ENCOUNTER_VERSION_CONFLICT',
+              'Conflicto de versión. El encuentro ha sido modificado por otro proceso.', 409);
+          }
+
+          await tx.auditEvent.create({ data: {
+            clinicId, actorUserId: userId, action: 'CLINICAL_ENCOUNTER_FINALIZED',
+            entityType: 'ClinicalEncounter', entityId: encounterId, success: true,
+            metadata: { status: 'FINALIZED', previousStatus: 'DRAFT', version: version + 1 }
+          } });
+          if (appointment) {
+            await tx.auditEvent.create({ data: {
+              clinicId, actorUserId: userId, action: 'APPOINTMENT_STATUS_CHANGED',
+              entityType: 'Appointment', entityId: appointment.id, success: true,
+              metadata: { appointmentId: appointment.id, previousStatus: 'IN_PROGRESS', newStatus: 'COMPLETED' }
+            } });
+          }
+        }, { isolationLevel: 'Serializable' });
+        return;
+      } catch (error) {
+        if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2034') throw error;
+        if (attempt === 2) {
+          throw new AppError('CONCURRENCY_ERROR',
+            'No se pudo finalizar el encuentro debido a alta concurrencia. Intente de nuevo.', 409);
+        }
+      }
+    }
+  }
+
   // expectedPatientId is only for the legacy creation endpoint, never start-care input.
   async startCare(actor: DentalCareActor, appointmentId: string, expectedPatientId?: string): Promise<StartCareResult> {
     const { clinicId, membershipId, userId, role } = actor;
