@@ -633,13 +633,35 @@ export class OdontogramService {
                 clinicId,
                 patientId
               },
-              select: { id: true, professionalMembershipId: true }
+              select: {
+                id: true,
+                professionalMembershipId: true,
+                status: true
+              }
             });
+
             if (!encounter) {
-              throw new AppError('NOT_FOUND', 'Consulta clínica no encontrada o no pertenece a este paciente', 404);
+              throw new AppError(
+                'NOT_FOUND',
+                'Consulta clínica no encontrada o no pertenece a este paciente',
+                404
+              );
             }
+
             if (encounter.professionalMembershipId !== membership.id) {
-              throw new AppError('FORBIDDEN', 'No puedes asociar un hallazgo dental a una consulta clínica de otro profesional', 403);
+              throw new AppError(
+                'FORBIDDEN',
+                'No puedes asociar un hallazgo dental a una consulta clínica de otro profesional',
+                403
+              );
+            }
+
+            if (encounter.status !== 'DRAFT') {
+              throw new AppError(
+                'CLINICAL_ENCOUNTER_FINALIZED',
+                'La consulta clínica está finalizada y no admite nuevos cambios clínicos.',
+                409
+              );
             }
           }
 
@@ -806,23 +828,6 @@ export class OdontogramService {
               throw new AppError('PATIENT_INACTIVE', 'El paciente está inactivo.', 409);
             }
 
-            if (cleanEncounterId) {
-              const encounter = await tx.clinicalEncounter.findFirst({
-                where: {
-                  id: cleanEncounterId,
-                  clinicId,
-                  patientId
-                },
-                select: { id: true, professionalMembershipId: true }
-              });
-              if (!encounter) {
-                throw new AppError('NOT_FOUND', 'Consulta clínica no encontrada o no pertenece a este paciente', 404);
-              }
-              if (encounter.professionalMembershipId !== membership.id) {
-                throw new AppError('FORBIDDEN', 'No puedes asociar un hallazgo dental a una consulta clínica de otro profesional', 403);
-              }
-            }
-
             // Check existing OdontogramBatchRequest in ledger
             if (tx.odontogramBatchRequest) {
               const existingBatchRequest = await tx.odontogramBatchRequest.findFirst({
@@ -910,6 +915,45 @@ export class OdontogramService {
                     };
                   }
                 }
+              }
+            }
+
+            if (cleanEncounterId) {
+              const encounter = await tx.clinicalEncounter.findFirst({
+                where: {
+                  id: cleanEncounterId,
+                  clinicId,
+                  patientId
+                },
+                select: {
+                  id: true,
+                  professionalMembershipId: true,
+                  status: true
+                }
+              });
+
+              if (!encounter) {
+                throw new AppError(
+                  'NOT_FOUND',
+                  'Consulta clínica no encontrada o no pertenece a este paciente',
+                  404
+                );
+              }
+
+              if (encounter.professionalMembershipId !== membership.id) {
+                throw new AppError(
+                  'FORBIDDEN',
+                  'No puedes asociar cambios del odontograma a una consulta clínica de otro profesional',
+                  403
+                );
+              }
+
+              if (encounter.status !== 'DRAFT') {
+                throw new AppError(
+                  'CLINICAL_ENCOUNTER_FINALIZED',
+                  'La consulta clínica está finalizada y no admite nuevos cambios clínicos.',
+                  409
+                );
               }
             }
 
@@ -1243,13 +1287,35 @@ export class OdontogramService {
                 clinicId,
                 patientId
               },
-              select: { id: true, professionalMembershipId: true }
+              select: {
+                id: true,
+                professionalMembershipId: true,
+                status: true
+              }
             });
+
             if (!encounter) {
-              throw new AppError('NOT_FOUND', 'Consulta clínica de resolución no encontrada o no pertenece a este paciente', 404);
+              throw new AppError(
+                'NOT_FOUND',
+                'Consulta clínica de resolución no encontrada o no pertenece a este paciente',
+                404
+              );
             }
+
             if (encounter.professionalMembershipId !== membership.id) {
-              throw new AppError('FORBIDDEN', 'No puedes asociar una resolución a una consulta clínica de otro profesional', 403);
+              throw new AppError(
+                'FORBIDDEN',
+                'No puedes asociar una resolución a una consulta clínica de otro profesional',
+                403
+              );
+            }
+
+            if (encounter.status !== 'DRAFT') {
+              throw new AppError(
+                'CLINICAL_ENCOUNTER_FINALIZED',
+                'La consulta clínica está finalizada y no admite nuevos cambios clínicos.',
+                409
+              );
             }
           }
 

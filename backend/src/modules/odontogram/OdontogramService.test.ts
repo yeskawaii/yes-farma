@@ -229,7 +229,7 @@ const createMockPrisma = (
       ...(overrides.membership || {})
     },
     clinicalEncounter: {
-      findFirst: async () => ({ id: 'enc-1', clinicId: 'clinic-1', patientId: 'pat-1', professionalMembershipId: 'mem-prof' }),
+      findFirst: async () => ({ id: 'enc-1', clinicId: 'clinic-1', patientId: 'pat-1', professionalMembershipId: 'mem-prof', status: 'DRAFT' }),
       ...(overrides.clinicalEncounter || {})
     },
     auditEvent: {
@@ -707,6 +707,208 @@ test('Odontogram — ClinicalEncounter Ownership', async (t) => {
       }),
       (err: any) => err.code === 'FORBIDDEN' && err.statusCode === 403
     );
+  });
+});
+
+test('Odontogram — ClinicalEncounter Draft Guard', async (t) => {
+  await t.test('F4A.1 createFinding rechaza encounter FINALIZED', async () => {
+    const mock = createMockPrisma({
+      clinicalEncounter: {
+        findFirst: async () => ({
+          id: 'enc-finalized',
+          clinicId: 'clinic-1',
+          patientId: 'pat-1',
+          professionalMembershipId: 'mem-prof',
+          status: 'FINALIZED'
+        })
+      }
+    });
+
+    const service = new OdontogramService(mock);
+
+    await assert.rejects(
+      service.createFinding('clinic-1', 'pat-1', 'mem-prof', {
+        toothNumber: 16,
+        findingType: 'CARIES',
+        surfaces: ['OCCLUSAL'],
+        encounterId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'
+      }),
+      (err: any) =>
+        err.code === 'CLINICAL_ENCOUNTER_FINALIZED' &&
+        err.statusCode === 409
+    );
+
+    assert.strictEqual(mock._getNewlyCreatedFindings().length, 0);
+  });
+
+  await t.test('F4A.2 resolveFinding rechaza resolutionEncounterId FINALIZED', async () => {
+    const mock = createMockPrisma({
+      clinicalEncounter: {
+        findFirst: async () => ({
+          id: 'enc-finalized',
+          clinicId: 'clinic-1',
+          patientId: 'pat-1',
+          professionalMembershipId: 'mem-prof',
+          status: 'FINALIZED'
+        })
+      }
+    });
+
+    const service = new OdontogramService(mock);
+
+    await assert.rejects(
+      service.resolveFinding(
+        'clinic-1',
+        'pat-1',
+        'f-1',
+        'mem-prof',
+        {
+          expectedVersion: 1,
+          resolutionEncounterId: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22'
+        }
+      ),
+      (err: any) =>
+        err.code === 'CLINICAL_ENCOUNTER_FINALIZED' &&
+        err.statusCode === 409
+    );
+
+    assert.strictEqual(mock._getUpdateManyCalls().length, 0);
+  });
+
+  await t.test('F4A.3 CREATE_FINDING batch rechaza encounter FINALIZED', async () => {
+    const mock = createMockPrisma({
+      clinicalEncounter: {
+        findFirst: async () => ({
+          id: 'enc-finalized',
+          clinicId: 'clinic-1',
+          patientId: 'pat-1',
+          professionalMembershipId: 'mem-prof',
+          status: 'FINALIZED'
+        })
+      }
+    });
+
+    const service = new OdontogramService(mock);
+
+    await assert.rejects(
+      service.applyBatch('clinic-1', 'pat-1', 'mem-prof', {
+        requestId: '41000000-0000-4000-8000-000000000001',
+        action: 'CREATE_FINDING',
+        findingType: 'CARIES',
+        encounterId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+        items: [
+          {
+            toothNumber: 16,
+            surfaces: ['OCCLUSAL']
+          }
+        ]
+      }),
+      (err: any) =>
+        err.code === 'CLINICAL_ENCOUNTER_FINALIZED' &&
+        err.statusCode === 409
+    );
+
+    assert.strictEqual(mock._getNewlyCreatedFindings().length, 0);
+    assert.strictEqual(mock._getNewlyCreatedBatchRequests().length, 0);
+    assert.strictEqual(mock._getAuditEvents().length, 0);
+  });
+
+  await t.test('F4A.4 RECORD_ASSESSMENT batch rechaza encounter FINALIZED', async () => {
+    const mock = createMockPrisma({
+      clinicalEncounter: {
+        findFirst: async () => ({
+          id: 'enc-finalized',
+          clinicId: 'clinic-1',
+          patientId: 'pat-1',
+          professionalMembershipId: 'mem-prof',
+          status: 'FINALIZED'
+        })
+      }
+    });
+
+    const service = new OdontogramService(mock);
+
+    await assert.rejects(
+      service.applyBatch('clinic-1', 'pat-1', 'mem-prof', {
+        requestId: '41000000-0000-4000-8000-000000000002',
+        action: 'RECORD_ASSESSMENT',
+        assessmentType: 'HEALTHY',
+        encounterId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+        items: [{ toothNumber: 11 }]
+      }),
+      (err: any) =>
+        err.code === 'CLINICAL_ENCOUNTER_FINALIZED' &&
+        err.statusCode === 409
+    );
+
+    assert.strictEqual(mock._getNewlyCreatedAssessments().length, 0);
+    assert.strictEqual(mock._getNewlyCreatedBatchRequests().length, 0);
+    assert.strictEqual(mock._getAuditEvents().length, 0);
+  });
+
+  await t.test('F4A.5 retry idempotente materializado sobre encounter luego FINALIZED sigue siendo histórico', async () => {
+    let encounterStatus = 'DRAFT';
+    let encounterReads = 0;
+
+    const mock = createMockPrisma({
+      clinicalEncounter: {
+        findFirst: async () => {
+          encounterReads++;
+
+          return {
+            id: 'enc-context',
+            clinicId: 'clinic-1',
+            patientId: 'pat-1',
+            professionalMembershipId: 'mem-prof',
+            status: encounterStatus
+          };
+        }
+      }
+    });
+
+    const service = new OdontogramService(mock);
+
+    const payload = {
+      requestId: '41000000-0000-4000-8000-000000000003',
+      action: 'CREATE_FINDING' as const,
+      findingType: 'CARIES' as const,
+      encounterId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+      items: [
+        {
+          toothNumber: 16,
+          surfaces: ['OCCLUSAL' as const]
+        }
+      ]
+    };
+
+    const first = await service.applyBatch(
+      'clinic-1',
+      'pat-1',
+      'mem-prof',
+      payload
+    );
+
+    assert.strictEqual(first.appliedCount, 1);
+    assert.strictEqual(encounterReads, 1);
+    assert.strictEqual(mock._getNewlyCreatedFindings().length, 1);
+    assert.strictEqual(mock._getAuditEvents().length, 1);
+
+    encounterStatus = 'FINALIZED';
+
+    const second = await service.applyBatch(
+      'clinic-1',
+      'pat-1',
+      'mem-prof',
+      payload
+    );
+
+    assert.strictEqual(second.appliedCount, 1);
+    assert.strictEqual(second.findings[0]?.id, first.findings[0]?.id);
+
+    // El ledger resuelve el retry antes de intentar una nueva escritura.
+    assert.strictEqual(encounterReads, 1);
+    assert.strictEqual(mock._getNewlyCreatedFindings().length, 1);
+    assert.strictEqual(mock._getAuditEvents().length, 1);
   });
 });
 
