@@ -27,7 +27,24 @@ export interface UpdateAppointmentInput {
 }
 
 export interface UpdateAppointmentStatusInput {
-  status: 'CONFIRMED' | 'IN_PROGRESS' | 'COMPLETED' | 'NO_SHOW';
+  status: 'CONFIRMED' | 'NO_SHOW';
+}
+
+
+
+export interface StartCareResponse {
+  created: boolean;
+  appointment: {
+    id: string;
+    status: 'IN_PROGRESS' | 'COMPLETED';
+  };
+  encounter: {
+    id: string;
+    patientId: string;
+    professionalMembershipId: string;
+    status: 'DRAFT' | 'FINALIZED';
+    version: number;
+  };
 }
 
 export interface CancelAppointmentInput {

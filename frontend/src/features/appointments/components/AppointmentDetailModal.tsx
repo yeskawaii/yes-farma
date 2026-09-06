@@ -1,6 +1,7 @@
-import { X, Clock, User, Stethoscope, FileText, AlertCircle, RefreshCw, Edit, Check, Play, CheckCircle2, UserX, Ban } from 'lucide-react';
+import { X, Clock, User, Stethoscope, FileText, AlertCircle, RefreshCw, Edit, Check, Play, Eye, Loader2, UserX, Ban } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { appointmentsApi } from '../api';
+import { useNavigate } from 'react-router-dom';
+import { appointmentsApi, getAppointmentErrorMessage } from '../api';
 import type { AppointmentDetail, AppointmentStatus, UpdateAppointmentStatusInput } from '../types';
 import { formatTime, formatDate } from '../utils/date';
 import { useAuth } from '../../../core/auth/AuthProvider';
@@ -24,6 +25,7 @@ const statusMap: Record<AppointmentStatus, { label: string, color: string }> = {
 };
 
 export function AppointmentDetailModal({ id, onClose, onSuccess }: AppointmentDetailModalProps) {
+  const navigate = useNavigate();
   const { activeRole, memberships, activeClinicId } = useAuth();
   const userMembershipId = memberships.find(m => m.clinicId === activeClinicId)?.id;
 
@@ -34,6 +36,8 @@ export function AppointmentDetailModal({ id, onClose, onSuccess }: AppointmentDe
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isCancelOpen, setIsCancelOpen] = useState(false);
   const [statusConfirm, setStatusConfirm] = useState<{ open: boolean; status: UpdateAppointmentStatusInput['status'] | null }>({ open: false, status: null });
+  const [isOpeningCare, setIsOpeningCare] = useState(false);
+  const [careError, setCareError] = useState<string | null>(null);
 
   const fetchDetail = async () => {
     try {
@@ -57,43 +61,98 @@ export function AppointmentDetailModal({ id, onClose, onSuccess }: AppointmentDe
     onSuccess();
   };
 
+  const handleOpenCare = async () => {
+    if (!detail || isOpeningCare) return;
+
+    try {
+      setIsOpeningCare(true);
+      setCareError(null);
+
+      const result = await appointmentsApi.startCare(detail.id);
+
+      onSuccess();
+
+      navigate(
+        `/patients/${encodeURIComponent(result.encounter.patientId)}/encounters/${encodeURIComponent(result.encounter.id)}`
+      );
+    } catch (error: unknown) {
+      setCareError(
+        getAppointmentErrorMessage(
+          error,
+          detail.status === 'SCHEDULED' || detail.status === 'CONFIRMED'
+            ? 'No fue posible iniciar la atención.'
+            : 'No fue posible abrir la atención.'
+        )
+      );
+    } finally {
+      setIsOpeningCare(false);
+    }
+  };
+
   // Permisos y acciones
   let canEdit = false;
   let canCancel = false;
   let canConfirm = false;
-  let canStart = false;
-  let canComplete = false;
   let canNoShow = false;
+  let careAction: 'START' | 'CONTINUE' | 'VIEW' | null = null;
 
   if (detail) {
     const isMine = detail.professionalMembershipId === userMembershipId;
-    const isOwnerOrAss = activeRole === 'OWNER' || activeRole === 'ASSISTANT';
-    const isProfAndMine = activeRole === 'PROFESSIONAL' && isMine;
-    const isProfOwner = activeRole === 'OWNER' || isProfAndMine;
+    const isOwnerOrAss =
+      activeRole === 'OWNER' || activeRole === 'ASSISTANT';
+    const isProfAndMine =
+      activeRole === 'PROFESSIONAL' && isMine;
 
-    // Edit
+    // OWNER no sustituye al profesional asignado:
+    // para entrar al contexto clínico esta membresía debe ser
+    // exactamente la responsable de la cita.
+    const isClinicalAssignee =
+      isMine &&
+      (activeRole === 'OWNER' || activeRole === 'PROFESSIONAL');
+
     if (['SCHEDULED', 'CONFIRMED'].includes(detail.status)) {
-      if (isOwnerOrAss || isProfAndMine) canEdit = true;
+      if (isOwnerOrAss || isProfAndMine) {
+        canEdit = true;
+      }
     }
 
-    // Cancel
-    if (['SCHEDULED', 'CONFIRMED', 'IN_PROGRESS'].includes(detail.status)) {
-      if (activeRole === 'OWNER' || isProfAndMine) canCancel = true;
-      if (activeRole === 'ASSISTANT' && ['SCHEDULED', 'CONFIRMED'].includes(detail.status)) canCancel = true;
+    // Después de iniciar atención ya existe un encounter y la cita
+    // deja de ser cancelable desde el flujo administrativo.
+    if (['SCHEDULED', 'CONFIRMED'].includes(detail.status)) {
+      if (
+        activeRole === 'OWNER' ||
+        activeRole === 'ASSISTANT' ||
+        isProfAndMine
+      ) {
+        canCancel = true;
+      }
     }
 
-    // Status transitions
     if (detail.status === 'SCHEDULED') {
       if (isOwnerOrAss || isProfAndMine) {
         canConfirm = true;
         canNoShow = true;
       }
-      if (isProfOwner) canStart = true;
+
+      if (isClinicalAssignee) {
+        careAction = 'START';
+      }
     } else if (detail.status === 'CONFIRMED') {
-      if (isOwnerOrAss || isProfAndMine) canNoShow = true;
-      if (isProfOwner) canStart = true;
+      if (isOwnerOrAss || isProfAndMine) {
+        canNoShow = true;
+      }
+
+      if (isClinicalAssignee) {
+        careAction = 'START';
+      }
     } else if (detail.status === 'IN_PROGRESS') {
-      if (isProfOwner) canComplete = true;
+      if (isClinicalAssignee) {
+        careAction = 'CONTINUE';
+      }
+    } else if (detail.status === 'COMPLETED') {
+      if (isClinicalAssignee) {
+        careAction = 'VIEW';
+      }
     }
   }
 
@@ -147,6 +206,16 @@ export function AppointmentDetailModal({ id, onClose, onSuccess }: AppointmentDe
                 </div>
 
                 {/* Actions */}
+                {careError && (
+                  <div className="flex items-start gap-2 p-3 bg-red-50 text-red-700 border border-red-200 rounded-lg text-sm">
+                    <AlertCircle
+                      size={16}
+                      className="shrink-0 mt-0.5"
+                    />
+                    <span>{careError}</span>
+                  </div>
+                )}
+
                 <div className="flex flex-wrap gap-2">
                   {canEdit && (
                     <button onClick={() => setIsEditOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-200 transition-colors">
@@ -158,14 +227,31 @@ export function AppointmentDetailModal({ id, onClose, onSuccess }: AppointmentDe
                       <Check size={16} /> Confirmar
                     </button>
                   )}
-                  {canStart && (
-                    <button onClick={() => setStatusConfirm({ open: true, status: 'IN_PROGRESS' })} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-lg border border-amber-200 transition-colors">
-                      <Play size={16} /> Iniciar
-                    </button>
-                  )}
-                  {canComplete && (
-                    <button onClick={() => setStatusConfirm({ open: true, status: 'COMPLETED' })} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200 transition-colors">
-                      <CheckCircle2 size={16} /> Completar
+                  {careAction && (
+                    <button
+                      onClick={() => void handleOpenCare()}
+                      disabled={isOpeningCare}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
+                        careAction === 'VIEW'
+                          ? 'text-blue-700 bg-blue-50 hover:bg-blue-100 border-blue-200'
+                          : 'text-amber-700 bg-amber-50 hover:bg-amber-100 border-amber-200'
+                      }`}
+                    >
+                      {isOpeningCare ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : careAction === 'VIEW' ? (
+                        <Eye size={16} />
+                      ) : (
+                        <Play size={16} />
+                      )}
+
+                      {isOpeningCare
+                        ? 'Abriendo...'
+                        : careAction === 'START'
+                          ? 'Iniciar atención'
+                          : careAction === 'CONTINUE'
+                            ? 'Continuar atención'
+                            : 'Ver atención'}
                     </button>
                   )}
                   {canNoShow && (

@@ -44,16 +44,6 @@ export function StatusConfirmationDialog({ isOpen, appointmentId, patientName, n
     title = 'Confirmar cita';
     message = `¿Confirmar la asistencia de ${patientName}?`;
     confirmText = 'Confirmar cita';
-  } else if (newStatus === 'IN_PROGRESS') {
-    title = 'Iniciar atención';
-    message = `¿Deseas iniciar la atención de ${patientName}?`;
-    confirmText = 'Iniciar atención';
-    confirmColor = 'bg-green-600 hover:bg-green-700';
-  } else if (newStatus === 'COMPLETED') {
-    title = 'Completar cita';
-    message = `¿Deseas marcar la cita de ${patientName} como completada?`;
-    confirmText = 'Completar cita';
-    confirmColor = 'bg-teal-600 hover:bg-teal-700';
   }
 
   return (
