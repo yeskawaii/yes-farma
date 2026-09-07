@@ -1,3 +1,4 @@
+import { Modal } from '../../../shared/components/Modal/Modal';
 import { useState } from 'react';
 import { appointmentsApi, getAppointmentErrorMessage } from '../api';
 
@@ -35,7 +36,7 @@ export function CancelAppointmentDialog({ isOpen, appointmentId, patientName, ap
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200" role="dialog" aria-modal="true">
+    <Modal onClose={onClose} closeOnBackdrop={false} closeOnEscape={!submitting} aria-label="Cancelar cita">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-md flex flex-col overflow-hidden">
         <div className="p-4 border-b">
           <h2 className="text-lg font-bold text-red-600">Cancelar Cita</h2>
@@ -90,6 +91,6 @@ export function CancelAppointmentDialog({ isOpen, appointmentId, patientName, ap
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

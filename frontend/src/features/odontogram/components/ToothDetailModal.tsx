@@ -1,3 +1,4 @@
+import { Modal } from '../../../shared/components/Modal/Modal';
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   X,
@@ -147,17 +148,6 @@ export const ToothDetailModal: React.FC<ToothDetailModalProps> = ({
     setActionError(null);
     setSubmitError(null);
   }, [readOnly]);
-
-  // Handle ESC key to close modal
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !submitting && !actionSubmitting) {
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose, submitting, actionSubmitting]);
 
   const handleTypeChange = (type: DentalFindingType) => {
     setNewType(type);
@@ -333,12 +323,7 @@ export const ToothDetailModal: React.FC<ToothDetailModalProps> = ({
   if (toothNumber === null) return null;
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="tooth-modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150"
-    >
+    <Modal onClose={onClose} closeOnBackdrop={false} closeOnEscape={!submitting && !actionSubmitting} aria-labelledby="tooth-modal-title">
       <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
         {/* Modal Header */}
         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
@@ -978,6 +963,6 @@ export const ToothDetailModal: React.FC<ToothDetailModalProps> = ({
           )}
         </div>
       </div>
-    </div>
+    </Modal>
   );
 };

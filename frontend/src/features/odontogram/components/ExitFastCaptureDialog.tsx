@@ -1,5 +1,5 @@
-import React, { useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useRef } from 'react';
+import { Modal } from '../../../shared/components/Modal/Modal';
 import { AlertTriangle, X } from 'lucide-react';
 
 interface ExitFastCaptureDialogProps {
@@ -15,38 +15,10 @@ export const ExitFastCaptureDialog: React.FC<ExitFastCaptureDialogProps> = ({
 }) => {
   const cancelBtnRef = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    if (!isOpen) return;
-
-    // Focus cancel button for safe keyboard navigation
-    cancelBtnRef.current?.focus();
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onCancel();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [isOpen, onCancel]);
-
   if (!isOpen) return null;
 
-  return createPortal(
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="exit-fast-capture-title"
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150"
-      onClick={onCancel}
-    >
+  return (
+    <Modal onClose={onCancel} aria-labelledby="exit-fast-capture-title" initialFocusRef={cancelBtnRef}>
       <div
         className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-6 flex flex-col gap-5 animate-in zoom-in-95 duration-150 relative mx-auto my-auto max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
@@ -98,7 +70,6 @@ export const ExitFastCaptureDialog: React.FC<ExitFastCaptureDialogProps> = ({
           </button>
         </div>
       </div>
-    </div>,
-    document.body
+    </Modal>
   );
 };

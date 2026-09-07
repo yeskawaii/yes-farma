@@ -1,3 +1,4 @@
+import { Modal } from '../../shared/components/Modal/Modal';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PatientForm } from './PatientForm';
@@ -58,7 +59,7 @@ export function PatientCreate() {
       />
 
       {showDuplicateDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+        <Modal onClose={cancelDuplicate} closeOnBackdrop={false} closeOnEscape={!loading} aria-label="Posible duplicado">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-6">
               <div className="flex items-start justify-between">
@@ -96,7 +97,7 @@ export function PatientCreate() {
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </>
   );

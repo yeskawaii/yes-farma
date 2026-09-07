@@ -1,3 +1,4 @@
+import { Modal } from '../../../shared/components/Modal/Modal';
 import { X, Clock, User, Stethoscope, FileText, AlertCircle, RefreshCw, Edit, Check, Play, Eye, Loader2, UserX, Ban } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -158,7 +159,7 @@ export function AppointmentDetailModal({ id, onClose, onSuccess }: AppointmentDe
 
   return (
     <>
-      <div className="fixed inset-0 z-40 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+      <Modal onClose={onClose} closeOnBackdrop={false} aria-label="Detalle de cita">
         <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto flex flex-col relative animate-slide-up">
           {/* Header */}
           <div className="sticky top-0 bg-white border-b border-slate-100 p-4 flex items-center justify-between z-10 rounded-t-2xl">
@@ -348,7 +349,7 @@ export function AppointmentDetailModal({ id, onClose, onSuccess }: AppointmentDe
             ) : null}
           </div>
         </div>
-      </div>
+      </Modal>
 
       {/* Modals on top */}
       {detail && (

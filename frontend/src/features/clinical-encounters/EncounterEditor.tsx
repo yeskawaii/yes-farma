@@ -1,3 +1,4 @@
+import { Modal } from '../../shared/components/Modal/Modal';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, FileText, AlertCircle, RefreshCw, Calendar, Clock, CheckCircle, Plus } from 'lucide-react';
@@ -1487,7 +1488,7 @@ export function EncounterEditor() {
       )}
 
       {showFinalizeConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in">
+        <Modal onClose={() => setShowFinalizeConfirm(false)} closeOnBackdrop={false} closeOnEscape={!isFinalizing} aria-label="Finalizar consulta">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95">
             <div className="p-6">
               <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mb-4">
@@ -1522,7 +1523,7 @@ export function EncounterEditor() {
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
