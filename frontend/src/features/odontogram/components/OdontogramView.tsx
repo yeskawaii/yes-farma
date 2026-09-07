@@ -1,3 +1,4 @@
+import { treatmentApi } from '../../treatment-plans/api';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Activity,
@@ -30,6 +31,8 @@ interface OdontogramViewProps {
   patientId: string;
   encounterId?: string;
   readOnly?: boolean;
+  initialTooth?: number;
+  onAddTreatment?: (tooth: number) => void;
 }
 
 const QUADRANT_1 = [18, 17, 16, 15, 14, 13, 12, 11];
@@ -72,12 +75,27 @@ function generateSecureUuid(): string {
 export const OdontogramView: React.FC<OdontogramViewProps> = ({
   patientId,
   encounterId,
-  readOnly = false
+  readOnly = false,
+  initialTooth,
+  onAddTreatment
 }) => {
   const [data, setData] = useState<OdontogramResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedTooth, setSelectedTooth] = useState<number | null>(null);
+  const [selectedTooth, setSelectedTooth] = useState<number | null>(initialTooth ?? null);
+
+  const [treatmentCounts, setTreatmentCounts] = useState<Record<number, number>>({});
+  const [treatmentError, setTreatmentError] = useState('');
+  useEffect(() => {
+    if (!onAddTreatment) return;
+    let active = true;
+    treatmentApi.list(patientId).then(plan => {
+      const counts: Record<number, number> = {};
+      plan.treatments.forEach(t => { if (t.toothNumber && t.status !== 'CANCELLED') counts[t.toothNumber] = (counts[t.toothNumber] || 0) + 1; });
+      if (active) setTreatmentCounts(counts);
+    }).catch(() => { if (active) setTreatmentError('No se pudieron cargar los indicadores del plan de tratamiento.'); });
+    return () => { active = false; };
+  }, [patientId, onAddTreatment]);
 
   // Fast Capture Mode States
   const [isFastCaptureActive, setIsFastCaptureActive] = useState(false);
@@ -611,6 +629,7 @@ export const OdontogramView: React.FC<OdontogramViewProps> = ({
                       <ToothGraphic
                         key={num}
                         toothNumber={num}
+                        treatmentCount={treatmentCounts[num]}
                         activeFindings={data?.teeth[num]?.activeFindings || []}
                         currentlyHealthy={isHealthy}
                         isSelected={isSelected}
@@ -670,6 +689,7 @@ export const OdontogramView: React.FC<OdontogramViewProps> = ({
                       <ToothGraphic
                         key={num}
                         toothNumber={num}
+                        treatmentCount={treatmentCounts[num]}
                         activeFindings={data?.teeth[num]?.activeFindings || []}
                         currentlyHealthy={isHealthy}
                         isSelected={isSelected}
@@ -749,6 +769,7 @@ export const OdontogramView: React.FC<OdontogramViewProps> = ({
                       <ToothGraphic
                         key={num}
                         toothNumber={num}
+                        treatmentCount={treatmentCounts[num]}
                         activeFindings={data?.teeth[num]?.activeFindings || []}
                         currentlyHealthy={isHealthy}
                         isSelected={isSelected}
@@ -808,6 +829,7 @@ export const OdontogramView: React.FC<OdontogramViewProps> = ({
                       <ToothGraphic
                         key={num}
                         toothNumber={num}
+                        treatmentCount={treatmentCounts[num]}
                         activeFindings={data?.teeth[num]?.activeFindings || []}
                         currentlyHealthy={isHealthy}
                         isSelected={isSelected}
@@ -831,6 +853,8 @@ export const OdontogramView: React.FC<OdontogramViewProps> = ({
         </div>
       </div>
 
+      {treatmentError && <p role="alert" className="text-amber-700 text-sm">{treatmentError}</p>}
+      {onAddTreatment && <p className="text-xs text-slate-500">La insignia T indica tratamientos asociados no cancelados.</p>}
       {/* Visual Chart Legend */}
       <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
         <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-3 flex items-center gap-1.5">
@@ -892,6 +916,8 @@ export const OdontogramView: React.FC<OdontogramViewProps> = ({
           readOnly={readOnly}
           onClose={() => setSelectedTooth(null)}
           onFindingUpdated={loadOdontogram}
+          onAddTreatment={onAddTreatment}
+          treatmentCount={treatmentCounts[selectedTooth] || 0}
         />
       )}
 

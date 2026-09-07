@@ -5,6 +5,7 @@ import { FDI_TOOTH_NAMES } from '../types';
 
 interface ToothGraphicProps {
   toothNumber: number;
+  treatmentCount?: number;
   activeFindings?: DentalFindingItem[];
   currentlyHealthy?: boolean;
   isSelected?: boolean;
@@ -24,6 +25,7 @@ const SURFACE_ORIENTED_TYPES = ['CARIES', 'RESTORATION', 'FRACTURE'] as const;
 
 export const ToothGraphic: React.FC<ToothGraphicProps> = ({
   toothNumber,
+  treatmentCount = 0,
   activeFindings = [],
   currentlyHealthy = false,
   isSelected = false,
@@ -135,12 +137,13 @@ export const ToothGraphic: React.FC<ToothGraphicProps> = ({
     <button
       type="button"
       onClick={onClick}
-      aria-label={accessibleLabel}
+      aria-label={`${accessibleLabel}${treatmentCount ? `; ${treatmentCount} tratamientos asociados` : ''}`}
       aria-pressed={isSelected}
       className={`relative flex flex-col items-center p-2 rounded-xl cursor-pointer transition-all duration-150 select-none text-left focus:outline-none focus:ring-2 focus:ring-indigo-500 touch-manipulation ${containerStyleClasses}`}
       style={{ minWidth: '54px', width: '56px', minHeight: '88px' }}
       title={conflictMessage || accessibleLabel}
     >
+      {treatmentCount > 0 && <span className="absolute -top-2 -right-1 bg-blue-700 text-white text-[9px] rounded-full px-1" title={`${treatmentCount} tratamientos asociados`}>T {treatmentCount}</span>}
       {/* Conflict Warning Badge */}
       {isConflicted && (
         <div

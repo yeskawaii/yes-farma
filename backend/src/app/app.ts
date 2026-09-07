@@ -1,3 +1,4 @@
+import { createTreatmentRoutes } from '../modules/treatment-plans/infrastructure/treatmentRoutes';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -35,6 +36,7 @@ export const createApp = (composition: AppCompositionRoot = buildCompositionRoot
 
   // Routes
   app.use('/api/auth', authRoutes);
+  app.use('/api', createTreatmentRoutes());
   app.use('/api/patients', patientRoutes);
   app.use('/api/patients', odontogramRoutes);
   app.use('/api/appointments', composition.appointmentRoutes);

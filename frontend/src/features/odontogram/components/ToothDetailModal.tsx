@@ -28,6 +28,8 @@ interface ToothDetailModalProps {
   toothNumber: number | null;
   encounterId?: string;
   readOnly?: boolean;
+  onAddTreatment?: (tooth: number) => void;
+  treatmentCount?: number;
   onClose: () => void;
   onFindingUpdated: () => void;
 }
@@ -60,7 +62,9 @@ export const ToothDetailModal: React.FC<ToothDetailModalProps> = ({
   encounterId,
   readOnly = false,
   onClose,
-  onFindingUpdated
+  onFindingUpdated,
+  onAddTreatment,
+  treatmentCount = 0
 }) => {
   const [data, setData] = useState<ToothDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -339,6 +343,21 @@ export const ToothDetailModal: React.FC<ToothDetailModalProps> = ({
             <p className="text-xs text-slate-500 mt-0.5">
               Gestión clínica longitudinal de la pieza dental permanente
             </p>
+            {onAddTreatment && (
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-blue-700">
+                <span>{treatmentCount} tratamientos asociados</span>
+                {!readOnly && (
+                  <button
+                    type="button"
+                    className="underline"
+                    disabled={submitting || actionSubmitting}
+                    onClick={() => { if (toothNumber) onAddTreatment(toothNumber); }}
+                  >
+                    Agregar tratamiento
+                  </button>
+                )}
+              </div>
+            )}
           </div>
           <button
             type="button"

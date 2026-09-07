@@ -1,3 +1,4 @@
+import { TreatmentPlanSection } from '../treatment-plans/TreatmentPlanSection';
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
@@ -35,7 +36,10 @@ export function PatientDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
-  const [currentTab, setCurrentTab] = useState<'OVERVIEW' | 'ODONTOGRAM' | 'ENCOUNTERS' | 'DOCUMENTS'>('OVERVIEW');
+  const [currentTab, setCurrentTab] = useState<'OVERVIEW' | 'ODONTOGRAM' | 'ENCOUNTERS' | 'DOCUMENTS' | 'TREATMENTS'>('OVERVIEW');
+
+  const [treatmentTooth, setTreatmentTooth] = useState<number>();
+  const [odontogramTooth, setOdontogramTooth] = useState<number>();
 
   const { activeRole } = useAuth();
   const [showDeactivateDialog, setShowDeactivateDialog] = useState(false);
@@ -271,6 +275,7 @@ export function PatientDetail() {
           Resumen General
         </button>
 
+        {canViewOdontogram && <button role="tab" id="tab-treatments" aria-controls="tab-panel-treatments" aria-selected={currentTab === 'TREATMENTS'} onClick={() => { setTreatmentTooth(undefined); setCurrentTab('TREATMENTS'); }} className={`py-3.5 px-4 text-sm font-bold border-b-2 shrink-0 whitespace-nowrap ${currentTab === 'TREATMENTS' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500'}`}>Plan de tratamiento</button>}
         {canViewOdontogram && (
           <button
             role="tab"
@@ -322,6 +327,7 @@ export function PatientDetail() {
         </button>
       </div>
 
+      {currentTab === 'TREATMENTS' && id && canViewOdontogram && <div role="tabpanel" id="tab-panel-treatments" aria-labelledby="tab-treatments"><TreatmentPlanSection key={id} patientId={id} readOnly={data.status !== 'ACTIVE'} initialTooth={treatmentTooth} onTooth={tooth => { setOdontogramTooth(tooth); setCurrentTab('ODONTOGRAM'); }} /></div>}
       {/* TAB PANEL: OVERVIEW */}
       {currentTab === 'OVERVIEW' && (
         <div
@@ -466,7 +472,7 @@ export function PatientDetail() {
           aria-labelledby="tab-odontogram"
           className="animate-in fade-in duration-150"
         >
-          <OdontogramView patientId={id} />
+          <OdontogramView patientId={id} readOnly={data.status !== 'ACTIVE'} initialTooth={odontogramTooth} onAddTreatment={tooth => { setTreatmentTooth(tooth); setCurrentTab('TREATMENTS'); }} />
         </div>
       )}
 
