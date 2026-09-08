@@ -1,6 +1,12 @@
+import type { Payment } from './BudgetPayments';
+import type { BudgetDocument } from './budgetPrint';
 import { apiClient } from '../../core/api/client';
 import type { Procedure, Treatment, TreatmentInput, TreatmentPlan, Budget, BudgetStatus } from './types';
 export const treatmentApi = {
+  payments: (p: string, b: string) => apiClient.get<Budget & { payments: Payment[] }>(`/patients/${p}/budgets/${b}/payments`),
+  pay: (p: string, b: string, data: { amount: string; method: Payment['method']; paidAt: string; reference: string | null; notes: string | null }) => apiClient.post(`/patients/${p}/budgets/${b}/payments`, data),
+  cancelPayment: (p: string, b: string, payment: string, cancellationReason: string) => apiClient.post(`/patients/${p}/budgets/${b}/payments/${payment}/cancel`, { cancellationReason }),
+  print: (p: string, b: string) => apiClient.get<BudgetDocument>(`/patients/${p}/budgets/${b}/print`),
   list: (patientId: string) => apiClient.get<TreatmentPlan>(`/patients/${patientId}/treatment-plan`),
   catalog: () => apiClient.get<Procedure[]>('/dental-procedures'),
   saveProcedure: (data: Omit<Procedure, 'id' | 'version'>, item?: Procedure) => item

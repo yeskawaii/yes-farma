@@ -1,7 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import { Prisma, PrismaClient } from '../../../generated/prisma';
 import { AuthContext } from '../../../middlewares/auth';
 import { AppError } from '../../../shared/errors/AppError';
-import { procedureSchema, procedureUpdateSchema, treatmentSchema, treatmentUpdateSchema, budgetSchema, budgetUpdateSchema, cents, money, treatmentTotals } from '../domain/TreatmentSchema';
+import { procedureSchema, procedureUpdateSchema, treatmentSchema, treatmentUpdateSchema, budgetSchema, budgetUpdateSchema, paymentSchema, paymentCancellationSchema, budgetFinances, cents, money, treatmentTotals } from '../domain/TreatmentSchema';
 
 type Tx = Prisma.TransactionClient;
 export class TreatmentService {
@@ -48,8 +49,8 @@ export class TreatmentService {
     return this.transaction(async tx => {
       await this.access(tx, ctx, patientId);
       const treatments = await tx.patientTreatment.findMany({ where: { clinicId: ctx.clinicId, patientId }, orderBy: { createdAt: 'desc' }, include: { professional: { select: { user: { select: { firstName: true, lastName: true } } } } } });
-      const budgets = await tx.treatmentBudget.findMany({ where: { clinicId: ctx.clinicId, patientId }, include: { items: true }, orderBy: { createdAt: 'desc' } });
-      return { treatments, totals: treatmentTotals(treatments), budgets };
+      const budgets = await tx.treatmentBudget.findMany({ where: { clinicId: ctx.clinicId, patientId }, include: { items: true, payments: true }, orderBy: { createdAt: 'desc' } });
+      return { treatments, totals: treatmentTotals(treatments), budgets: budgets.map(({ payments, ...b }) => ({ ...b, ...budgetFinances(b.total, payments) })) };
     });
   }
   saveTreatment(ctx: AuthContext, patientId: string, body: unknown, id?: string) {
@@ -83,7 +84,7 @@ export class TreatmentService {
       const discount = cents(input.discount);
       if (discount > subtotal) throw new AppError('VALIDATION_ERROR', 'El descuento supera el subtotal.', 400);
       const budget = await tx.treatmentBudget.create({ data: {
-        clinicId: ctx.clinicId, patientId, subtotal: money(subtotal), discount: money(discount), total: money(subtotal - discount),
+        folio: `P-${randomUUID().replace(/-/g, '').slice(0, 16).toUpperCase()}`, clinicId: ctx.clinicId, patientId, subtotal: money(subtotal), discount: money(discount), total: money(subtotal - discount),
         items: { create: treatments.map((t): Prisma.TreatmentBudgetItemUncheckedCreateWithoutBudgetInput => ({ treatmentId: t.id, name: t.name, description: t.description, toothNumber: t.toothNumber, surfaces: t.surfaces, price: t.price })) },
       }, include: { items: true } });
       await this.audit(tx, ctx, 'BUDGET_CREATED', budget.id, { treatmentIds: input.treatmentIds, total: budget.total.toString() });
@@ -104,4 +105,55 @@ export class TreatmentService {
       return tx.treatmentBudget.findUniqueOrThrow({ where: { id }, include: { items: true } });
     });
   }
+  private async scopedBudget(tx: Tx, ctx: AuthContext, patientId: string, id: string) {
+    const budget = await tx.treatmentBudget.findFirst({ where: { id, clinicId: ctx.clinicId, patientId }, include: { items: { orderBy: { id: 'asc' } }, payments: { orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: { createdBy: { select: { user: { select: { firstName: true, lastName: true } } } }, cancelledBy: { select: { user: { select: { firstName: true, lastName: true } } } } } } } });
+    if (!budget) throw new AppError('NOT_FOUND', 'Presupuesto no encontrado.', 404);
+    return budget;
+  }
+  paymentHistory(ctx: AuthContext, patientId: string, id: string) {
+    return this.transaction(async tx => {
+      await this.access(tx, ctx, patientId);
+      const budget = await this.scopedBudget(tx, ctx, patientId, id);
+      return { ...budget, ...budgetFinances(budget.total, budget.payments) };
+    });
+  }
+  printBudget(ctx: AuthContext, patientId: string, id: string) {
+    return this.transaction(async tx => {
+      await this.access(tx, ctx, patientId);
+      const budget = await this.scopedBudget(tx, ctx, patientId, id);
+      const clinic = await tx.clinic.findUniqueOrThrow({ where: { id: ctx.clinicId }, select: { name: true, timeZone: true } });
+      const patient = await tx.patient.findFirstOrThrow({ where: { id: patientId, clinicId: ctx.clinicId }, select: { firstName: true, lastName: true, secondLastName: true } });
+      const { payments, ...snapshot } = budget;
+      return { clinic, patient, budget: { ...snapshot, ...budgetFinances(budget.total, payments) } };
+    });
+  }
+  createPayment(ctx: AuthContext, patientId: string, id: string, body: unknown) {
+    const input = paymentSchema.parse(body);
+    return this.transaction(async tx => {
+      await this.access(tx, ctx, patientId, true);
+      const budget = await this.scopedBudget(tx, ctx, patientId, id);
+      if (budget.status !== 'ACCEPTED') throw new AppError('INVALID_BUDGET_STATUS', 'Solo los presupuestos aceptados pueden recibir abonos.', 409);
+      if (cents(input.amount) > cents(budgetFinances(budget.total, budget.payments).balance)) throw new AppError('OVERPAYMENT', 'El monto supera el saldo pendiente. Recarga el presupuesto.', 409);
+      // Shared budget write makes simultaneous collections conflict under Serializable.
+      await tx.treatmentBudget.update({ where: { id }, data: { version: { increment: 1 } } });
+      const payment = await tx.budgetPayment.create({ data: { ...input, paidAt: new Date(input.paidAt), clinicId: ctx.clinicId, patientId, budgetId: id, createdByMembershipId: ctx.membershipId } });
+      await this.audit(tx, ctx, 'PAYMENT_CREATED', payment.id, { budgetId: id, patientId, amount: input.amount, method: input.method, paidAt: input.paidAt });
+      return payment;
+    });
+  }
+  cancelPayment(ctx: AuthContext, patientId: string, id: string, paymentId: string, body: unknown) {
+    const input = paymentCancellationSchema.parse(body);
+    return this.transaction(async tx => {
+      await this.access(tx, ctx, patientId);
+      const budget = await this.scopedBudget(tx, ctx, patientId, id);
+      const payment = budget.payments.find(p => p.id === paymentId);
+      if (!payment) throw new AppError('NOT_FOUND', 'Pago no encontrado.', 404);
+      if (payment.status !== 'ACTIVE') throw new AppError('PAYMENT_CANCELLED', 'El pago ya está cancelado.', 409);
+      await tx.treatmentBudget.update({ where: { id }, data: { version: { increment: 1 } } });
+      const result = await tx.budgetPayment.update({ where: { id: paymentId }, data: { status: 'CANCELLED', ...input, cancelledAt: new Date(), cancelledByMembershipId: ctx.membershipId } });
+      await this.audit(tx, ctx, 'PAYMENT_CANCELLED', paymentId, { budgetId: id, patientId, amount: payment.amount.toString(), ...input });
+      return result;
+    });
+  }
+
 }

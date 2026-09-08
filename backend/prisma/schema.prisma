@@ -181,6 +181,8 @@ model Membership {
   clinic  Clinic               @relation(fields: [clinicId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   profile ProfessionalProfile?
 
+  createdPayments BudgetPayment[] @relation("PaymentCreatedBy")
+  cancelledPayments BudgetPayment[] @relation("PaymentCancelledBy")
   assignedTreatments  PatientTreatment[]
   createdPatients     Patient[] @relation("PatientCreatedBy")
   updatedPatients     Patient[] @relation("PatientUpdatedBy")
@@ -698,6 +700,7 @@ model PatientTreatment {
 }
 
 model TreatmentBudget {
+  folio String? @db.VarChar(32)
   id                        String              @id @default(uuid()) @db.Uuid
   clinicId                  String              @db.Uuid
   patientId                 String              @db.Uuid
@@ -710,6 +713,8 @@ model TreatmentBudget {
   updatedAt                 DateTime            @updatedAt @db.Timestamptz(3)
   clinic                    Clinic              @relation(fields: [clinicId], references: [id], onDelete: Restrict)
   patient                   Patient             @relation(fields: [clinicId, patientId], references: [clinicId, id], onDelete: Restrict)
+  @@unique([clinicId, folio])
+  payments                  BudgetPayment[]
   items                     TreatmentBudgetItem[]
   @@unique([clinicId, patientId, id])
   @@index([clinicId, patientId, createdAt])
@@ -729,4 +734,37 @@ model TreatmentBudgetItem {
   budget                    TreatmentBudget     @relation(fields: [clinicId, patientId, budgetId], references: [clinicId, patientId, id], onDelete: Restrict)
   treatment                 PatientTreatment    @relation(fields: [clinicId, patientId, treatmentId], references: [clinicId, patientId, id], onDelete: Restrict)
   @@unique([budgetId, treatmentId])
+}
+
+
+enum PaymentMethod {
+  CASH
+  TRANSFER
+  CARD
+  OTHER
+}
+enum PaymentStatus {
+  ACTIVE
+  CANCELLED
+}
+model BudgetPayment {
+  id String @id @default(uuid()) @db.Uuid
+  clinicId String @db.Uuid
+  patientId String @db.Uuid
+  budgetId String @db.Uuid
+  amount Decimal @db.Decimal(12, 2)
+  method PaymentMethod
+  paidAt DateTime @db.Date
+  reference String? @db.VarChar(200)
+  notes String? @db.VarChar(2000)
+  status PaymentStatus @default(ACTIVE)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  createdByMembershipId String @db.Uuid
+  cancelledAt DateTime? @db.Timestamptz(3)
+  cancelledByMembershipId String? @db.Uuid
+  cancellationReason String? @db.VarChar(500)
+  budget TreatmentBudget @relation(fields: [clinicId, patientId, budgetId], references: [clinicId, patientId, id], onDelete: Restrict)
+  createdBy Membership @relation("PaymentCreatedBy", fields: [clinicId, createdByMembershipId], references: [clinicId, id], onDelete: Restrict)
+  cancelledBy Membership? @relation("PaymentCancelledBy", fields: [clinicId, cancelledByMembershipId], references: [clinicId, id], onDelete: Restrict)
+  @@index([clinicId, patientId, budgetId, createdAt])
 }

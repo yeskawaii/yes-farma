@@ -14,6 +14,7 @@ test('all treatment, catalog and budget endpoints require a session', async () =
     for (const [method, path] of [
       ['GET', '/dental-procedures'], ['POST', '/dental-procedures'], ['PATCH', '/dental-procedures/id'],
       ['GET', '/patients/id/treatment-plan'], ['POST', '/patients/id/treatments'], ['PATCH', '/patients/id/treatments/id'],
+      ['GET', '/patients/id/budgets/id/payments'], ['POST', '/patients/id/budgets/id/payments'], ['POST', '/patients/id/budgets/id/payments/payment/cancel'], ['GET', '/patients/id/budgets/id/print'],
       ['POST', '/patients/id/budgets'], ['PATCH', '/patients/id/budgets/id'],
     ]) {
       const response: Awaited<ReturnType<typeof fetch>> = await fetch(`http://127.0.0.1:${address.port}${path}`, { method: method! });

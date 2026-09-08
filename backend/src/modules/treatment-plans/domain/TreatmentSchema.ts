@@ -46,3 +46,17 @@ export function treatmentTotals(items: Array<{ price: { toString(): string }; st
   const sum = (statuses: string[]) => money(items.filter(i => statuses.includes(i.status)).reduce((a, i) => a + cents(i.price), 0));
   return { planned: sum(['PENDING', 'ACCEPTED', 'IN_PROGRESS', 'COMPLETED']), accepted: sum(['ACCEPTED', 'IN_PROGRESS', 'COMPLETED']), completed: sum(['COMPLETED']), pending: sum(['PENDING', 'ACCEPTED', 'IN_PROGRESS']) };
 }
+
+export const paymentSchema = z.object({
+  amount: moneySchema.refine(v => cents(v) > 0, 'El monto debe ser mayor a cero'),
+  method: z.enum(['CASH', 'TRANSFER', 'CARD', 'OTHER']),
+  paidAt: date.unwrap(),
+  reference: z.string().trim().max(200).nullable().default(null),
+  notes: z.string().trim().max(2000).nullable().default(null),
+}).strict();
+export const paymentCancellationSchema = z.object({ cancellationReason: z.string().trim().min(1, 'Indica el motivo de cancelación').max(500) }).strict();
+export function budgetFinances(total: { toString(): string }, payments: Array<{ amount: { toString(): string }; status: string }>) {
+  const paid = payments.filter(p => p.status === 'ACTIVE').reduce((sum, p) => sum + cents(p.amount), 0);
+  const balance = cents(total) - paid;
+  return { paid: money(paid), balance: money(balance), financialStatus: balance === 0 ? 'PAID' : paid === 0 ? 'UNPAID' : 'PARTIAL' };
+}
