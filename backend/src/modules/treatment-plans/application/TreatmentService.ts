@@ -97,6 +97,17 @@ export class TreatmentService {
       await this.access(tx, ctx, patientId, true);
       const previous = await tx.treatmentBudget.findFirst({ where: { id, clinicId: ctx.clinicId, patientId } });
       if (!previous) throw new AppError('NOT_FOUND', 'Presupuesto no encontrado.', 404);
+      if ('discount' in input) {
+        if (!['DRAFT', 'PRESENTED'].includes(previous.status)) throw new AppError('BUDGET_LOCKED', 'Este presupuesto ya fue aceptado o rechazado y no puede editarse.', 409);
+        const discount = cents(input.discount);
+        if (discount > cents(previous.subtotal)) throw new AppError('VALIDATION_ERROR', 'El descuento no puede superar el subtotal del presupuesto.', 400);
+        const before = { discount: previous.discount.toString(), total: previous.total.toString() };
+        const after = { discount: money(discount), total: money(cents(previous.subtotal) - discount) };
+        const result = await tx.treatmentBudget.updateMany({ where: { id, clinicId: ctx.clinicId, patientId, version: input.expectedVersion }, data: { ...after, version: { increment: 1 } } });
+        if (!result.count) throw new AppError('CONCURRENCY_ERROR', 'El presupuesto cambió. Cierra y vuelve a abrir la edición para cargar la versión actual.', 409);
+        await this.audit(tx, ctx, 'BUDGET_DISCOUNT_UPDATED', id, { before, after });
+        return tx.treatmentBudget.findUniqueOrThrow({ where: { id }, include: { items: true } });
+      }
       const transitions: Record<string, string[]> = { DRAFT: ['PRESENTED'], PRESENTED: ['ACCEPTED', 'REJECTED'], ACCEPTED: [], REJECTED: [] };
       if (!transitions[previous.status]?.includes(input.status)) throw new AppError('INVALID_TRANSITION', 'Cambio de estado no permitido.', 409);
       const result = await tx.treatmentBudget.updateMany({ where: { id, clinicId: ctx.clinicId, patientId, version: input.expectedVersion }, data: { status: input.status, version: { increment: 1 } } });

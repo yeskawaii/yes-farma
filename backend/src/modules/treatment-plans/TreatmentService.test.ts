@@ -91,3 +91,26 @@ test('OWNER and PROFESSIONAL with active profiles are allowed; ASSISTANT and ina
   f.setRole('OWNER'); f.disableProfile();
   await assert.rejects(f.service.saveTreatment(ctx, patientId, input), { code: 'FORBIDDEN' });
 });
+
+test('discount corrections preserve snapshot, identity, state and audit; reject stale versions and locked budgets', async () => {
+  const f = fixture(); const t = await f.service.saveTreatment(ctx, patientId, input);
+  const b = await f.service.createBudget(ctx, patientId, { treatmentIds: [t.id], discount: '23.40' });
+  const snapshot = JSON.stringify(b.items);
+  await f.service.updateBudget(ctx, patientId, b.id, { discount: '3.40', expectedVersion: 1 });
+  assert.equal(b.total, '120.05'); assert.equal(b.status, 'DRAFT'); assert.equal(JSON.stringify(b.items), snapshot);
+  assert.deepEqual(f.audits.at(-1).metadata, { before: { discount: '23.40', total: '100.05' }, after: { discount: '3.40', total: '120.05' } });
+  await assert.rejects(f.service.updateBudget(ctx, patientId, b.id, { discount: '0', expectedVersion: 1 }), { code: 'CONCURRENCY_ERROR' });
+  await assert.rejects(f.service.updateBudget(ctx, patientId, b.id, { discount: '124', expectedVersion: 2 }), { code: 'VALIDATION_ERROR' });
+  for (const discount of ['-1', '1.234', 'NaN']) assert.throws(() => f.service.updateBudget(ctx, patientId, b.id, { discount, expectedVersion: 2 }));
+  await f.service.updateBudget(ctx, patientId, b.id, { status: 'PRESENTED', expectedVersion: 2 });
+  await f.service.updateBudget(ctx, patientId, b.id, { discount: '0', expectedVersion: 3 });
+  assert.equal(b.total, '123.45'); assert.equal(b.status, 'PRESENTED'); assert.equal(f.budgets.length, 1);
+  for (const status of ['ACCEPTED', 'REJECTED'] as const) {
+    b.status = status;
+    await assert.rejects(f.service.updateBudget(ctx, patientId, b.id, { discount: '1', expectedVersion: 4 }), { code: 'BUDGET_LOCKED' });
+  }
+  b.status = 'DRAFT';
+  await assert.rejects(f.service.updateBudget(ctx, randomUUID(), b.id, { discount: '0', expectedVersion: 4 }), { code: 'NOT_FOUND' });
+  f.deactivate();
+  await assert.rejects(f.service.updateBudget(ctx, patientId, b.id, { discount: '0', expectedVersion: 4 }), { code: 'PATIENT_INACTIVE' });
+});

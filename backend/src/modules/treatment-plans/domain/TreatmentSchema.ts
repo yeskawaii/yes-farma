@@ -41,7 +41,10 @@ export const budgetSchema = z.object({
   treatmentIds: z.array(z.string().uuid()).min(1).max(100).refine(v => new Set(v).size === v.length, 'Tratamientos duplicados'),
   discount: moneySchema.default('0'),
 }).strict();
-export const budgetUpdateSchema = z.object({ status: budgetStatusSchema, expectedVersion: z.number().int().positive() }).strict();
+export const budgetUpdateSchema = z.union([
+  z.object({ status: budgetStatusSchema, expectedVersion: z.number().int().positive() }).strict(),
+  z.object({ discount: moneySchema, expectedVersion: z.number().int().positive() }).strict(),
+]);
 export function treatmentTotals(items: Array<{ price: { toString(): string }; status: string }>) {
   const sum = (statuses: string[]) => money(items.filter(i => statuses.includes(i.status)).reduce((a, i) => a + cents(i.price), 0));
   return { planned: sum(['PENDING', 'ACCEPTED', 'IN_PROGRESS', 'COMPLETED']), accepted: sum(['ACCEPTED', 'IN_PROGRESS', 'COMPLETED']), completed: sum(['COMPLETED']), pending: sum(['PENDING', 'ACCEPTED', 'IN_PROGRESS']) };

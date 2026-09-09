@@ -16,5 +16,6 @@ export const treatmentApi = {
     ? apiClient.patch<Treatment>(`/patients/${patientId}/treatments/${item.id}`, { ...data, expectedVersion: item.version })
     : apiClient.post<Treatment>(`/patients/${patientId}/treatments`, data),
   budget: (patientId: string, treatmentIds: string[], discount: string) => apiClient.post<Budget>(`/patients/${patientId}/budgets`, { treatmentIds, discount }),
+  updateDiscount: (patientId: string, item: Budget, discount: string) => apiClient.patch<Budget>(`/patients/${patientId}/budgets/${item.id}`, { discount, expectedVersion: item.version }),
   budgetStatus: (patientId: string, item: Budget, status: BudgetStatus) => apiClient.patch<Budget>(`/patients/${patientId}/budgets/${item.id}`, { status, expectedVersion: item.version }),
 };
