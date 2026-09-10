@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, Calendar, User, FileText } from 'lucide-react';
+import { Package, LayoutDashboard, Users, Calendar, User, FileText } from 'lucide-react';
 import { useAuth } from '../../../core/auth/AuthProvider';
 
 export function BottomNav() {
@@ -30,6 +30,8 @@ export function BottomNav() {
         <Calendar size={22} className="transition-transform duration-200 group-[.active]:-translate-y-0.5" />
         <span className="text-[10px] font-medium">Agenda</span>
       </NavLink>
+
+      <NavLink to="/inventory" className={({ isActive }) => `flex flex-col items-center justify-center gap-1 w-full h-full transition-colors ${isActive ? 'text-blue-600' : 'text-slate-500'}`}><Package size={22} /><span className="text-[10px] font-medium">Inventario</span></NavLink>
 
       {(activeRole === 'OWNER' || activeRole === 'PROFESSIONAL') && (
         <NavLink

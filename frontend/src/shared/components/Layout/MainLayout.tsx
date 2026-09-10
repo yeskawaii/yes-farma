@@ -11,12 +11,12 @@ export function MainLayout() {
   const roleDisplay = activeRole === 'OWNER' ? 'Propietario' : activeRole === 'PROFESSIONAL' ? 'Profesional' : activeRole === 'ASSISTANT' ? 'Asistente' : 'Personal';
 
   return (
-    <div className="flex min-h-screen bg-[#F5F8FC] animate-slide-up">
+    <div className="flex min-h-screen bg-[#F5F8FC]">
       {/* Sidebar Desktop */}
       <Sidebar />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col w-full min-h-screen">
+      <div className="flex-1 flex flex-col w-full min-w-0 min-h-screen">
 
         {/* Header Mobile (Hidden on Desktop) */}
         <header className="md:hidden h-16 px-4 flex items-center justify-between sticky top-0 z-40 bg-white border-b border-slate-200 shadow-sm">

@@ -150,6 +150,8 @@ model Clinic {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  inventoryProducts InventoryProduct[]
+  inventorySuppliers InventorySupplier[]
   memberships        Membership[]
   activeSessions     Session[]
   auditEvents        AuditEvent[]
@@ -181,6 +183,7 @@ model Membership {
   clinic  Clinic               @relation(fields: [clinicId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   profile ProfessionalProfile?
 
+  inventoryMovements InventoryMovement[]
   createdPayments BudgetPayment[] @relation("PaymentCreatedBy")
   cancelledPayments BudgetPayment[] @relation("PaymentCancelledBy")
   assignedTreatments  PatientTreatment[]
@@ -767,4 +770,90 @@ model BudgetPayment {
   createdBy Membership @relation("PaymentCreatedBy", fields: [clinicId, createdByMembershipId], references: [clinicId, id], onDelete: Restrict)
   cancelledBy Membership? @relation("PaymentCancelledBy", fields: [clinicId, cancelledByMembershipId], references: [clinicId, id], onDelete: Restrict)
   @@index([clinicId, patientId, budgetId, createdAt])
+}
+
+
+enum InventoryMovementType {
+  ENTRY
+  CONSUMPTION
+  WASTE
+  ADJUSTMENT_IN
+  ADJUSTMENT_OUT
+}
+
+model InventorySupplier {
+  id String @id @default(uuid()) @db.Uuid
+  clinicId String @db.Uuid
+  name String @db.VarChar(200)
+  contact String? @db.VarChar(200)
+  phone String? @db.VarChar(50)
+  email String? @db.VarChar(254)
+  notes String? @db.VarChar(2000)
+  active Boolean @default(true)
+  version Int @default(1)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Restrict)
+  products InventoryProduct[]
+  lots InventoryLot[]
+  @@unique([clinicId, id])
+  @@index([clinicId, active])
+}
+
+model InventoryProduct {
+  id String @id @default(uuid()) @db.Uuid
+  clinicId String @db.Uuid
+  name String @db.VarChar(200)
+  description String? @db.VarChar(2000)
+  category String @db.VarChar(100)
+  unit String @db.VarChar(50)
+  minimumStock Decimal @db.Decimal(14, 3)
+  supplierId String? @db.Uuid
+  referenceCost Decimal? @db.Decimal(12, 2)
+  active Boolean @default(true)
+  version Int @default(1)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Restrict)
+  supplier InventorySupplier? @relation(fields: [clinicId, supplierId], references: [clinicId, id], onDelete: Restrict)
+  lots InventoryLot[]
+  @@unique([clinicId, id])
+  @@index([clinicId, active, name])
+}
+
+model InventoryLot {
+  id String @id @default(uuid()) @db.Uuid
+  clinicId String @db.Uuid
+  productId String @db.Uuid
+  number String? @db.VarChar(100)
+  expiryDate DateTime? @db.Date
+  receivedAt DateTime @db.Date
+  unitCost Decimal? @db.Decimal(12, 2)
+  supplierId String? @db.Uuid
+  initialQuantity Decimal @db.Decimal(14, 3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  product InventoryProduct @relation(fields: [clinicId, productId], references: [clinicId, id], onDelete: Restrict)
+  supplier InventorySupplier? @relation(fields: [clinicId, supplierId], references: [clinicId, id], onDelete: Restrict)
+  movements InventoryMovement[]
+  @@unique([clinicId, productId, id])
+  @@index([clinicId, productId, expiryDate])
+}
+
+model InventoryMovement {
+  id String @id @default(uuid()) @db.Uuid
+  clinicId String @db.Uuid
+  productId String @db.Uuid
+  lotId String @db.Uuid
+  type InventoryMovementType
+  quantity Decimal @db.Decimal(14, 3)
+  effectiveDate DateTime @db.Date
+  reason String @db.VarChar(500)
+  note String? @db.VarChar(2000)
+  unitCost Decimal? @db.Decimal(12, 2)
+  createdByMembershipId String @db.Uuid
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  lot InventoryLot @relation(fields: [clinicId, productId, lotId], references: [clinicId, productId, id], onDelete: Restrict)
+  createdBy Membership @relation(fields: [clinicId, createdByMembershipId], references: [clinicId, id], onDelete: Restrict)
+  @@index([clinicId, createdAt])
+  @@index([clinicId, productId, lotId])
 }

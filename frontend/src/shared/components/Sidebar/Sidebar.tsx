@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Users, Calendar, Settings, LogOut, FileText, HeartPulse } from 'lucide-react';
+import { Package, LayoutDashboard, Users, Calendar, Settings, LogOut, FileText, HeartPulse } from 'lucide-react';
 import { useAuth } from '../../../core/auth/AuthProvider';
 
 export function Sidebar() {
@@ -41,6 +41,8 @@ export function Sidebar() {
           <Calendar size={18} />
           <span>Agenda</span>
         </NavLink>
+
+        <NavLink to="/inventory" className={({ isActive }) => `flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors font-medium text-sm ${isActive ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}><Package size={18} /><span>Inventario</span></NavLink>
 
         {(activeRole === 'OWNER' || activeRole === 'PROFESSIONAL') && (
           <NavLink

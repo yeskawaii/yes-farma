@@ -1,3 +1,4 @@
+import { InventoryPage } from '../features/inventory/InventoryPage';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { MainLayout } from '../shared/components/Layout/MainLayout';
 import { LoginPage } from '../features/auth/LoginPage';
@@ -43,6 +44,8 @@ export const router = createBrowserRouter([
             path: '/',
             element: <Navigate to="/dashboard" replace />,
           },
+          { path: 'inventory', element: <InventoryPage /> },
+          { path: 'inventory/products/:id', element: <InventoryPage /> },
           {
             path: 'dashboard',
             element: <DashboardPage />,
