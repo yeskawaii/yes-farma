@@ -1,3 +1,4 @@
+import { createPrescriptionRoutes } from '../modules/prescriptions/prescriptionRoutes';
 import { createInventoryRoutes } from '../modules/inventory/infrastructure/inventoryRoutes';
 import { createTreatmentRoutes } from '../modules/treatment-plans/infrastructure/treatmentRoutes';
 import express from 'express';
@@ -37,6 +38,7 @@ export const createApp = (composition: AppCompositionRoot = buildCompositionRoot
 
   // Routes
   app.use('/api/auth', authRoutes);
+  app.use('/api/prescriptions', createPrescriptionRoutes());
   app.use('/api/inventory', createInventoryRoutes());
   app.use('/api', createTreatmentRoutes());
   app.use('/api/patients', patientRoutes);

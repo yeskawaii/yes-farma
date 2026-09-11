@@ -1,3 +1,4 @@
+import { PrescriptionSection } from '../prescriptions/PrescriptionSection';
 import { TreatmentPlanSection } from '../treatment-plans/TreatmentPlanSection';
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -36,7 +37,7 @@ export function PatientDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
-  const [currentTab, setCurrentTab] = useState<'OVERVIEW' | 'ODONTOGRAM' | 'ENCOUNTERS' | 'DOCUMENTS' | 'TREATMENTS'>('OVERVIEW');
+  const [currentTab, setCurrentTab] = useState<'OVERVIEW' | 'ODONTOGRAM' | 'ENCOUNTERS' | 'DOCUMENTS' | 'TREATMENTS' | 'PRESCRIPTIONS'>('OVERVIEW');
 
   const [treatmentTooth, setTreatmentTooth] = useState<number>();
   const [odontogramTooth, setOdontogramTooth] = useState<number>();
@@ -294,6 +295,7 @@ export function PatientDetail() {
           </button>
         )}
 
+        {canViewOdontogram && <button role="tab" aria-selected={currentTab === 'PRESCRIPTIONS'} aria-controls="tab-panel-prescriptions" id="tab-prescriptions" onClick={() => setCurrentTab('PRESCRIPTIONS')} className={`py-3.5 px-4 text-sm font-bold border-b-2 ${currentTab === 'PRESCRIPTIONS' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500'}`}>Recetas</button>}
         <button
           role="tab"
           aria-selected={currentTab === 'ENCOUNTERS'}
@@ -488,6 +490,7 @@ export function PatientDetail() {
         </div>
       )}
 
+      {currentTab === 'PRESCRIPTIONS' && canViewOdontogram && id && <div id="tab-panel-prescriptions" role="tabpanel" aria-labelledby="tab-prescriptions"><PrescriptionSection patientId={id} patientName={fullName} readOnly={data.status !== 'ACTIVE'} /></div>}
       {/* TAB PANEL: DOCUMENTS */}
       {currentTab === 'DOCUMENTS' && id && (
         <div

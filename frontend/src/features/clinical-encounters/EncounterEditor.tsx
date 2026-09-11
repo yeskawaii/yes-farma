@@ -1,3 +1,4 @@
+import { PrescriptionSection } from '../prescriptions/PrescriptionSection';
 import { Modal } from '../../shared/components/Modal/Modal';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -1341,6 +1342,7 @@ export function EncounterEditor() {
             readOnly={!canEditEncounter}
           />
 
+          <PrescriptionSection patientId={patientId} patientName={data.patient.displayName} encounterId={encounterId} />
           <PatientDocumentList
             patientId={patientId}
             clinicalEncounterId={encounterId}

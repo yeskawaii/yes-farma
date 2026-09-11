@@ -142,6 +142,7 @@ model User {
 }
 
 model Clinic {
+  prescriptions Prescription[]
   id       String       @id @default(uuid()) @db.Uuid
   name     String
   timeZone String       @default("America/Mexico_City") @map("timezone")
@@ -170,6 +171,8 @@ model Clinic {
 }
 
 model Membership {
+  prescriptions Prescription[] @relation("PrescriptionPrescriber")
+  cancelledPrescriptions Prescription[] @relation("PrescriptionCancelledBy")
   id       String           @id @default(uuid()) @db.Uuid
   userId   String           @db.Uuid
   clinicId String           @db.Uuid
@@ -216,6 +219,9 @@ model Membership {
 }
 
 model ProfessionalProfile {
+  specialtyLicense String?
+  professionalAddress String?
+  professionalPhone String?
   id                  String  @id @default(uuid()) @db.Uuid
   membershipId        String  @unique @db.Uuid
   specialtyCode       String
@@ -287,6 +293,7 @@ model AuditEvent {
 }
 
 model Patient {
+  prescriptions Prescription[]
   id                  String        @id @default(uuid()) @db.Uuid
   clinicId            String        @db.Uuid
   firstName           String
@@ -366,6 +373,7 @@ model Appointment {
 }
 
 model ClinicalEncounter {
+  prescriptions Prescription[]
   id                       String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   clinicId                 String                  @db.Uuid
   patientId                String                  @db.Uuid
@@ -405,6 +413,7 @@ model ClinicalEncounter {
   toothAssessments       ToothAssessment[]
 
   @@unique([clinicId, id])
+  @@unique([clinicId, patientId, id])
   @@index([clinicId, patientId, occurredAt])
   @@index([clinicId, professionalMembershipId, occurredAt], map: "ClinicalEncounter_clinicId_professionalMembershipId_occurr_idx")
   @@index([clinicId, status, occurredAt])
@@ -856,4 +865,59 @@ model InventoryMovement {
   createdBy Membership @relation(fields: [clinicId, createdByMembershipId], references: [clinicId, id], onDelete: Restrict)
   @@index([clinicId, createdAt])
   @@index([clinicId, productId, lotId])
+}
+
+
+enum PrescriptionStatus {
+  DRAFT
+  ISSUED
+  CANCELLED
+}
+
+model Prescription {
+  id String @id @default(uuid()) @db.Uuid
+  clinicId String @db.Uuid
+  patientId String @db.Uuid
+  prescriberMembershipId String @db.Uuid
+  encounterId String? @db.Uuid
+  status PrescriptionStatus @default(DRAFT)
+  folio String? @unique @db.VarChar(40)
+  generalInstructions String @default("") @db.VarChar(4000)
+  snapshot Json?
+  version Int @default(1)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  issuedAt DateTime? @db.Timestamptz(3)
+  cancelledAt DateTime? @db.Timestamptz(3)
+  cancellationReason String? @db.VarChar(500)
+  cancelledByMembershipId String? @db.Uuid
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Restrict)
+  patient Patient @relation(fields: [clinicId, patientId], references: [clinicId, id], onDelete: Restrict)
+  prescriber Membership @relation("PrescriptionPrescriber", fields: [clinicId, prescriberMembershipId], references: [clinicId, id], onDelete: Restrict)
+  encounter ClinicalEncounter? @relation(fields: [clinicId, patientId, encounterId], references: [clinicId, patientId, id], onDelete: Restrict)
+  cancelledBy Membership? @relation("PrescriptionCancelledBy", fields: [clinicId, cancelledByMembershipId], references: [clinicId, id], onDelete: Restrict)
+  items PrescriptionItem[]
+  @@unique([clinicId, id])
+  @@index([clinicId, patientId, createdAt])
+  @@index([clinicId, encounterId])
+  @@index([clinicId, prescriberMembershipId, status])
+}
+
+model PrescriptionItem {
+  id String @id @default(uuid()) @db.Uuid
+  clinicId String @db.Uuid
+  prescriptionId String @db.Uuid
+  sortOrder Int
+  medication String @db.VarChar(200)
+  brand String @default("") @db.VarChar(200)
+  concentration String @default("") @db.VarChar(100)
+  form String @default("") @db.VarChar(100)
+  dose String @default("") @db.VarChar(200)
+  route String @default("") @db.VarChar(100)
+  frequency String @default("") @db.VarChar(200)
+  duration String @default("") @db.VarChar(200)
+  quantity String @default("") @db.VarChar(100)
+  instructions String @default("") @db.VarChar(1000)
+  prescription Prescription @relation(fields: [clinicId, prescriptionId], references: [clinicId, id], onDelete: Restrict)
+  @@unique([prescriptionId, sortOrder])
 }
