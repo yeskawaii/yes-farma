@@ -114,6 +114,9 @@ export interface AppointmentDetail {
   };
 }
 
+// PATCH /appointments/:id/status returns the scalar Prisma row, without relations.
+export type UpdateAppointmentStatusResponse = Omit<AppointmentDetail, 'patient' | 'professionalMembership'>;
+
 export interface AppointmentsFilters {
   startAt: string;
   endAt: string;

@@ -1,5 +1,5 @@
 import { apiClient, ApiClientError } from '../../core/api/client';
-import type { AppointmentListItem, AppointmentDetail, AppointmentsFilters, AppointmentProfessionalOption, CreateAppointmentInput, UpdateAppointmentInput, UpdateAppointmentStatusInput, CancelAppointmentInput, StartCareResponse } from './types';
+import type { AppointmentListItem, AppointmentDetail, AppointmentsFilters, AppointmentProfessionalOption, CreateAppointmentInput, UpdateAppointmentInput, UpdateAppointmentStatusInput, UpdateAppointmentStatusResponse, CancelAppointmentInput, StartCareResponse } from './types';
 
 export function isApiError(error: unknown): error is ApiClientError {
   return error instanceof ApiClientError;
@@ -77,8 +77,8 @@ export const appointmentsApi = {
     return apiClient.patch<AppointmentDetail>(`/appointments/${id}`, data);
   },
 
-  updateStatus: async (id: string, data: UpdateAppointmentStatusInput): Promise<AppointmentDetail> => {
-    return apiClient.patch<AppointmentDetail>(`/appointments/${id}/status`, data);
+  updateStatus: async (id: string, data: UpdateAppointmentStatusInput): Promise<UpdateAppointmentStatusResponse> => {
+    return apiClient.patch<UpdateAppointmentStatusResponse>(`/appointments/${id}/status`, data);
   },
 
   startCare: async (id: string): Promise<StartCareResponse> => {

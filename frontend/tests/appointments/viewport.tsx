@@ -50,20 +50,34 @@ window.fetch = async (input, init) => {
     await new Promise<void>(resolve => { releaseConfirm = resolve; });
     if (failConfirm) { failConfirm = false; return Response.json({ error: { code: 'FORBIDDEN' } }, { status: 403 }); }
     const target = data.find(a => path.endsWith(`/appointments/${a.id}/status`))!;
-    Object.assign(target, body); return Response.json(target);
+    Object.assign(target, body);
+    // AppointmentController.updateStatus returns the Prisma scalar row, without
+    // the patient/professional relations selected by GET /appointments/:id.
+    const { patient: _patient, professionalMembership: _professional, ...scalars } = target;
+    return Response.json({
+      ...scalars,
+      clinicId: 'clinic',
+      createdAt: '2026-09-01T12:00:00.000Z',
+      updatedAt: '2026-09-11T12:00:00.000Z',
+      createdByMembershipId: 'professional',
+      updatedByMembershipId: 'professional',
+      cancelledAt: null,
+      cancelledByMembershipId: null,
+    });
   }
   const item = data.find(a => path.endsWith(`/appointments/${a.id}`));
   if (item) { if (body) Object.assign(item, body); return Response.json(item); }
   return Response.json({}, { status: 404 });
 };
-const root = createRoot(document.getElementById('root')!);
+const renderErrors: unknown[] = [];
+const root = createRoot(document.getElementById('root')!, { onUncaughtError: error => { renderErrors.push(error); } });
 function render(path = '/appointments') { root.render(<AuthProvider key={`${role}:${path}`}><MemoryRouter initialEntries={[path]}><Routes><Route element={<MainLayout />}><Route path="/appointments" element={<AppointmentsPage />} /></Route></Routes></MemoryRouter></AuthProvider>); }
 const results: string[] = [];
 const tick = () => new Promise(resolve => setTimeout(resolve, 30));
 const check = (value: unknown, label: string) => { if (!value) throw new Error(label); results.push('PASS ' + label); };
 const button = (text: string, scope: ParentNode = document) => [...(scope?.querySelectorAll<HTMLButtonElement>('button') || [])].find(b => b.textContent?.trim() === text && b.getClientRects().length)!;
 const dialog = () => document.querySelector<HTMLElement>('[role="dialog"]')!;
-async function waitFor(fn: () => unknown) { for (let n = 0; n < 150; n++) { if (fn()) return; await tick(); } throw new Error('Timed out waiting for interface'); }
+async function waitFor(fn: () => unknown) { for (let n = 0; n < 150; n++) { if (renderErrors.length) throw renderErrors[0]; if (fn()) return; await tick(); } throw new Error('Timed out waiting for interface'); }
 async function click(text: string, scope: ParentNode = document) { const b = button(text, scope); if (!b) throw new Error(`Missing button ${text}`); b.click(); await tick(); await tick(); }
 async function set(selector: string, value: string, scope: ParentNode = document) { const el = scope.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(selector)!; if (!el) throw new Error(`Missing field ${selector}`); const proto = el instanceof HTMLSelectElement ? HTMLSelectElement.prototype : el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto, 'value')!.set!.call(el, value); el.dispatchEvent(new Event(el instanceof HTMLSelectElement ? 'change' : 'input', { bubbles: true })); await tick(); }
 async function checkpoint(name: string) { check(document.documentElement.scrollWidth <= innerWidth, `Sin overflow: ${name}`); if (new URLSearchParams(location.search).get('review') === name) { document.body.dataset.review = name; await new Promise(() => {}); } }
@@ -210,8 +224,14 @@ async function runDetailActions() {
     check(requests.filter(r => r.path.endsWith('/status')).length === count + 1 && requests.at(-1)?.body.status === status, `${label}: doble clic envía una petición con estado correcto`);
     releaseConfirm!(); await waitFor(() => !!dialog()?.querySelector('[role="alert"]'));
     check(dialog().textContent?.includes('No tienes permisos') && !button(label, dialog())?.disabled, `${label}: error mantiene detalle y permite reintentar`);
+    const listRequests = requests.filter(r => r.path.includes('/appointments?')).length;
     await click(label, dialog()); releaseConfirm!(); await waitFor(() => dialog()?.textContent?.includes(feedback));
     check(!button(label, dialog()) && data[0].status === status, `${label}: éxito actualiza estado y feedback`);
+    const visualStatus = status === 'CONFIRMED' ? 'Confirmada' : 'No asistió';
+    check(renderErrors.length === 0 && dialog().textContent?.includes(visualStatus) && dialog().textContent?.includes('Mariana López García') && dialog().textContent?.includes('andrea@example.test'), `${label}: render posterior conserva paciente, profesional y estado sin excepción`);
+    // onSuccess is a signal with no payload: the actual parent reloads the list.
+    await waitFor(() => !!document.querySelector(`button[aria-label^="Mariana López, cita ${visualStatus} de "]`));
+    check(requests.filter(r => r.path.includes('/appointments?')).length === listRequests + 1, `${label}: callback padre recarga datos válidos y agenda refleja el estado`);
   }
   for (const status of ['SCHEDULED', 'CONFIRMED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'NO_SHOW']) {
     data[0].status = status;

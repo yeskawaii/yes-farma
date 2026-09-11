@@ -161,7 +161,8 @@ export function AppointmentDetailModal({ id, onClose, onSuccess }: AppointmentDe
     setStatusSuccess(null);
     try {
       const updated = await appointmentsApi.updateStatus(detail.id, { status });
-      setDetail(updated);
+      // The status endpoint returns scalars only; retain the loaded relations.
+      setDetail(current => current?.id === updated.id ? { ...current, ...updated } : current);
       setStatusSuccess(status === 'CONFIRMED' ? 'Cita confirmada.' : 'Inasistencia registrada.');
       onSuccess();
     } catch (error: unknown) {
