@@ -12,7 +12,15 @@ for count in [1, 3, 30] {
         for required in ["Clínica dental de prueba", "RECETA ODONTOLÓGICA", "Fecha: 11/9/2026", "Consultorio de prueba", "Paciente de prueba"] { assert(text.contains(required), "Missing document identification: \(required)") }
         assert(text.contains("Firma del profesional"), "Missing signature")
         assert(text.contains("TEST-123456"), "Missing license")
+        assert(text.contains("ESP-123456"), "Missing specialty license")
+        assert(text.contains("Odontología") && !text.contains("DENTISTRY"), "Unreadable specialty")
+        assert(text.contains("Tomar 1 cápsula por vía oral cada 8 horas durante 7 días."), "Missing natural directions")
+        assert(!text.contains("Para firma física") && !text.contains("Folio interno"), "Internal wording leaked")
+        assert(!text.contains("about:blank") && !text.contains("file://"), "Browser header leaked")
+        assert(text.components(separatedBy: "Modo de uso:").count - 1 == count, "Missing or duplicated medication")
         assert(!text.contains("Selecciona papel Carta"), "Web controls leaked into PDF")
+        assert(text.components(separatedBy: "Cantidad prescrita").count - 1 == count, "Missing quantities")
+        assert(text.components(separatedBy: "Instrucciones adicionales indicadas por el profesional.").count - 1 == count, "Missing additional instructions")
         for n in 1...count { assert(text.contains("MEDICAMENTO DE PRUEBA \(n)"), "Missing medication \(n)") }
         for i in 0..<pdf.pageCount {
             let page = pdf.page(at: i)!
@@ -20,7 +28,7 @@ for count in [1, 3, 30] {
             assert(abs(bounds.width - 612) < 1 && abs(bounds.height - 792) < 1, "Not letter paper")
             let pageText = page.string ?? ""
             assert(pageText.contains("MEDICAMENTO") || pageText.contains("Firma del profesional") || pageText.contains("INDICACIONES GENERALES"), "Blank document page")
-            if i == 0 || i == pdf.pageCount - 1 { assert(pageText.contains("RX-1234567890ABCDEF1234567890ABCDEF"), "Missing document folio") }
+            if i == 0 || i == pdf.pageCount - 1 { assert(pageText.contains("RX-12345678-1234-1234-1234-123456789abc"), "Missing document folio") }
             if status == "CANCELLED" { assert(pageText.contains("RECETA ANULADA"), "Missing cancelled marking on page \(i)") }
         }
         for pageNumber in Set([0, pdf.pageCount - 1]) {

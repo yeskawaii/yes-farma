@@ -73,3 +73,9 @@ Límites deliberados: 30 medicamentos por receta; doble copia pendiente; sin rec
 - Typecheck y builds de backend/frontend aprobados. Lint sin errores; advertencias existentes fuera de recetas. Vite conserva la advertencia de tamaño del bundle.
 - El adaptador PostgreSQL emite una advertencia de deprecación durante las pruebas; no afecta sus resultados.
 - Seis PDFs reales verificados con Chrome y PDFKit: 1, 3 y 30 medicamentos, tanto emitidos como anulados. Carta en todas las páginas, sin controles web ni páginas vacías, todos los medicamentos presentes, firma y folio conservados. Las recetas cortas ocupan una página; las largas paginan. Marca de anulación en cada página.
+
+## Presentación de la receta impresa
+
+La plantilla utiliza exclusivamente el snapshot emitido para los datos clínicos y del consultorio. Presenta el nombre de la clínica (el snapshot no incluye logo), datos compactos del paciente/profesional, medicamentos separados, firma y el folio completo sin modificar su valor. Los códigos conocidos de especialidad se muestran con nombres legibles; el texto libre se conserva. La redacción de la vía oral usa «Tomar … por vía oral cada … durante …» únicamente en la impresión, sin modificar dosis ni instrucciones almacenadas. Las demás vías conservan «Administrar».
+
+Para imprimir o guardar como PDF, seleccionar **Carta**, escala **100 %** y desactivar **«Encabezados y pies de página»** en Chrome. Esa opción pertenece al navegador: evita fecha/hora, URL y numeración que no agrega la plantilla. La ayuda y el botón de impresión no aparecen en el PDF. La receta usa tipografía y líneas en escala de grises; las anuladas conservan el aviso, motivo, fecha y marca en todas las páginas.
