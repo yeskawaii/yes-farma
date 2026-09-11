@@ -22,10 +22,11 @@ try {
   const report = [];
   const cases = [['month', 1440, 1000], ['day', 1440, 900], ['form', 1280, 900], ['form', 390, 844], ['detail', 1280, 900]];
   const focused = process.argv.includes('--focused');
-  const selected = focused ? (process.argv.includes('--test') ? [['test', 1280, 900]] : cases.filter(c => ['form', 'detail'].includes(c[0]))) : process.argv.includes('--test') ? [['test', 1280, 900]] : process.argv.includes('--remaining') ? [cases[0], cases[4]] : cases;
+  const detailActions = process.argv.includes('--detail-actions');
+  const selected = detailActions ? (process.argv.includes('--test') ? [['test', 1280, 900]] : [['cancel', 1280, 900], ['cancel', 390, 844], ['detail-actions', 1280, 900]]) : focused ? (process.argv.includes('--test') ? [['test', 1280, 900]] : cases.filter(c => ['form', 'detail'].includes(c[0]))) : process.argv.includes('--test') ? [['test', 1280, 900]] : process.argv.includes('--remaining') ? [cases[0], cases[4]] : cases;
   for (const [view, width, height] of selected) {
     await call('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false }, sessionId);
-    await call('Page.navigate', { url: `file://${directory}/dist/index.html?review=${view}${focused ? '&focused=1' : ''}` }, sessionId);
+    await call('Page.navigate', { url: `file://${directory}/dist/index.html?review=${view}${detailActions ? '&detailActions=1' : focused ? '&focused=1' : ''}` }, sessionId);
     let ready = false;
     for (let attempt = 0; attempt < 200; attempt++) {
       if (await evaluate(view === 'test' ? "document.body?.dataset.appointmentTests === 'passed'" : `document.body?.dataset.review === '${view}'`)) { ready = true; break; }

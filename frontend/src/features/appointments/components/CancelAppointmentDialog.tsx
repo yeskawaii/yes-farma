@@ -1,5 +1,6 @@
 import { Modal } from '../../../shared/components/Modal/Modal';
-import { useState } from 'react';
+import { useId, useRef, useState } from 'react';
+import { Ban, Loader2 } from 'lucide-react';
 import { appointmentsApi, getAppointmentErrorMessage } from '../api';
 
 interface CancelAppointmentDialogProps {
@@ -12,6 +13,8 @@ interface CancelAppointmentDialogProps {
 }
 
 export function CancelAppointmentDialog({ isOpen, appointmentId, patientName, appointmentDateTime, onClose, onSuccess }: CancelAppointmentDialogProps) {
+  const reasonId = useId();
+  const submittingRef = useRef(false);
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -19,10 +22,12 @@ export function CancelAppointmentDialog({ isOpen, appointmentId, patientName, ap
   if (!isOpen) return null;
 
   const handleCancel = async () => {
+    if (submittingRef.current) return;
     if (reason.length > 500) {
       return setError('El motivo no puede exceder los 500 caracteres.');
     }
 
+    submittingRef.current = true;
     setSubmitting(true);
     setError(null);
     try {
@@ -31,52 +36,57 @@ export function CancelAppointmentDialog({ isOpen, appointmentId, patientName, ap
       onClose();
     } catch (error: unknown) {
       setError(getAppointmentErrorMessage(error, 'No fue posible cancelar la cita. Inténtalo nuevamente.'));
+    } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };
 
   return (
     <Modal onClose={onClose} closeOnBackdrop={false} closeOnEscape={!submitting} aria-label="Cancelar cita">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md flex flex-col overflow-hidden">
-        <div className="p-4 border-b">
-          <h2 className="text-lg font-bold text-red-600">Cancelar Cita</h2>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[calc(100dvh-3rem)] flex flex-col overflow-hidden" aria-busy={submitting}>
+        <div className="px-5 pt-5 sm:px-6 sm:pt-6 flex items-center gap-3 shrink-0">
+          <div className="p-2.5 rounded-xl bg-red-50 text-red-600"><Ban size={22} aria-hidden="true" /></div>
+          <h2 className="text-xl font-semibold text-slate-900">Cancelar cita</h2>
         </div>
 
-        <div className="p-4 space-y-4">
-          {error && (
-            <div className="p-3 bg-red-100 text-red-700 rounded border border-red-200 text-sm">
-              {error}
-            </div>
-          )}
-
-          <p className="text-sm text-gray-700">
-            ¿Estás seguro que deseas cancelar la cita de <strong>{patientName}</strong> el <strong>{appointmentDateTime}</strong>?
+        <div className="p-5 sm:p-6 space-y-5 overflow-y-auto">
+          <p className="text-sm leading-6 text-slate-600">
+            La cita de <strong className="font-semibold text-slate-900">{patientName}</strong> del{' '}
+            <strong className="font-semibold text-slate-900">{appointmentDateTime}</strong> será cancelada.
           </p>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Motivo de cancelación <span className="text-gray-400 font-normal">(Opcional)</span>
+            <label htmlFor={reasonId} className="block text-sm font-medium text-slate-900 mb-2">
+              Motivo de cancelación <span className="text-slate-500 font-normal">(opcional)</span>
             </label>
             <textarea
-              className="w-full border rounded p-2 text-sm focus:ring-red-500 focus:border-red-500"
-              rows={3}
+              id={reasonId}
+              aria-describedby={`${reasonId}-count`}
+              className="block w-full min-h-32 resize-y border border-slate-300 rounded-xl p-3 text-base sm:text-sm leading-6 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-400 disabled:bg-slate-50 disabled:text-slate-500"
+              rows={4}
               maxLength={500}
               value={reason}
               onChange={e => setReason(e.target.value)}
               disabled={submitting}
-              placeholder="Ej: El paciente llamó para cancelar..."
+              placeholder="Escribe el motivo de la cancelación"
             />
-            <div className={`text-xs text-right mt-1 ${reason.length >= 500 ? 'text-red-500' : 'text-gray-500'}`}>
-              {reason.length}/500
+            <div id={`${reasonId}-count`} className="text-xs text-right mt-2 text-slate-500">
+              {reason.length}/500 caracteres
             </div>
           </div>
+          {error && (
+            <div role="alert" className="p-3 bg-red-50 text-red-700 rounded-xl text-sm leading-5">
+              {error}
+            </div>
+          )}
         </div>
 
-        <div className="p-4 border-t flex justify-end space-x-2 bg-gray-50">
+        <div className="px-5 py-4 sm:px-6 border-t border-slate-100 flex justify-end gap-3 shrink-0">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 border rounded text-gray-700 hover:bg-gray-100"
+            className="px-4 py-2.5 text-sm font-medium rounded-xl text-slate-600 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={submitting}
           >
             Volver
@@ -84,9 +94,10 @@ export function CancelAppointmentDialog({ isOpen, appointmentId, patientName, ap
           <button
             type="button"
             onClick={handleCancel}
-            className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold bg-red-600 text-white rounded-xl hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed"
             disabled={submitting}
           >
+            {submitting && <Loader2 size={16} className="animate-spin" aria-hidden="true" />}
             {submitting ? 'Cancelando...' : 'Cancelar cita'}
           </button>
         </div>

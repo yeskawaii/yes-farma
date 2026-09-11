@@ -19,6 +19,8 @@ let role = 'OWNER';
 let failCreate = false;
 let failList = false;
 let failConfirm = false;
+let failCancel = false;
+let releaseCancel: (() => void) | undefined;
 let releaseConfirm: (() => void) | undefined;
 const requests: { path: string; body?: any; method?: string }[] = [];
 window.fetch = async (input, init) => {
@@ -37,6 +39,12 @@ window.fetch = async (input, init) => {
   if (path.endsWith('/appointments') && body) {
     if (failCreate) { failCreate = false; return Response.json({ error: { code: 'APPOINTMENT_CONFLICT' } }, { status: 409 }); }
     const item = { ...appointment(30, future), ...body, id: 'created' }; data.push(item); return Response.json(item);
+  }
+  if (path.endsWith('/cancel')) {
+    await new Promise<void>(resolve => { releaseCancel = resolve; });
+    if (failCancel) { failCancel = false; return Response.json({}, { status: 500 }); }
+    const target = data.find(a => path.endsWith(`/appointments/${a.id}/cancel`))!;
+    Object.assign(target, body, { status: 'CANCELLED' }); return Response.json(target);
   }
   if (path.endsWith('/status')) {
     await new Promise<void>(resolve => { releaseConfirm = resolve; });
@@ -155,8 +163,9 @@ async function runFocused() {
   await click('Confirmar', dialog()); releaseConfirm!(); await waitFor(() => !!dialog()?.querySelector('[role="status"]'));
   check(dialog().textContent?.includes('Confirmada') && dialog().textContent?.includes('Cita confirmada.') && !button('Confirmar', dialog()), 'Éxito actualiza estado y muestra feedback');
   await checkpoint('detail');
-  await click('No asistió', dialog()); check(document.querySelectorAll('[role="dialog"]').length === 2, 'Inasistencia conserva confirmación');
-  await click('Cancelar', document.querySelectorAll<HTMLElement>('[role="dialog"]')[1]);
+  await click('No asistió', dialog()); check(document.querySelectorAll('[role="dialog"]').length === 1, 'Inasistencia directa');
+  releaseConfirm!(); await waitFor(() => dialog()?.textContent?.includes('Inasistencia registrada.'));
+  render('/appointments?appointment=appointment-1'); await waitFor(() => !!button('Cancelar cita', dialog()));
   await click('Cancelar cita', dialog()); check(document.querySelectorAll('[role="dialog"]').length === 2, 'Cancelación conserva diálogo');
   data[0].status = 'SCHEDULED';
   role = 'PROFESSIONAL'; render('/appointments?appointment=appointment-0'); await waitFor(() => dialog()?.textContent?.includes('Mariana') && !button('Editar', dialog()));
@@ -165,4 +174,55 @@ async function runFocused() {
   check(!button('Iniciar atención', dialog()), 'Asistente puede confirmar y conserva permisos clínicos');
   document.body.dataset.appointmentTests = 'passed';
 }
-(new URLSearchParams(location.search).has('focused') ? runFocused() : run()).catch(e => { results.push('FAIL ' + e.message); document.body.dataset.appointmentTests = 'failed'; }).finally(() => { document.getElementById('appointment-test-results')!.textContent = results.join('\n'); });
+async function runDetailActions() {
+  render('/appointments?appointment=appointment-0'); await waitFor(() => !!button('No asistió', dialog()));
+  await checkpoint('detail-actions');
+  await click('Cancelar cita', dialog());
+  const cancellation = () => document.querySelector<HTMLElement>('[role="dialog"][aria-label="Cancelar cita"]')!;
+  await waitFor(() => !!cancellation());
+  check(cancellation().textContent?.includes('Mariana López García') && cancellation().textContent?.includes('09:00'), 'Cancelación identifica paciente y horario');
+  check(cancellation().textContent?.includes('(opcional)') && cancellation().querySelector('textarea')?.maxLength === 500, 'Motivo opcional conserva límite de 500');
+  await checkpoint('cancel');
+  await set('textarea', 'El paciente solicita reprogramar.', cancellation());
+  failCancel = true;
+  const cancel = button('Cancelar cita', cancellation()); cancel.click(); cancel.click(); await tick();
+  check(requests.filter(r => r.path.endsWith('/cancel')).length === 1 && button('Cancelando...', cancellation())?.disabled && button('Volver', cancellation())?.disabled && cancellation().querySelector('textarea')?.disabled, 'Cancelación bloquea doble submit y desactiva acciones/campo');
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  check(!!cancellation(), 'Escape no cierra durante cancelación');
+  releaseCancel!(); await waitFor(() => !!cancellation()?.querySelector('[role="alert"]'));
+  check(cancellation().querySelector('textarea')?.value === 'El paciente solicita reprogramar.' && cancellation().textContent?.includes('No fue posible cancelar'), 'Error conserva motivo y modal con mensaje comprensible');
+  await click('Cancelar cita', cancellation()); releaseCancel!();
+  await waitFor(() => !cancellation() && dialog()?.textContent?.includes('Cancelada'));
+  check(dialog().textContent?.includes('El paciente solicita reprogramar.') && !button('Cancelar cita', dialog()), 'Cancelación exitosa actualiza detalle y motivo');
+  render('/appointments?appointment=appointment-1'); await waitFor(() => !!button('Cancelar cita', dialog()));
+  await click('Cancelar cita', dialog());
+  check(cancellation().querySelector('textarea')?.value === '', 'Otra cancelación abre sin contenido ni loading anteriores');
+  await click('Cancelar cita', cancellation());
+  check(requests.filter(r => r.path.endsWith('/cancel')).at(-1)?.body.cancellationReason === undefined, 'Se permite cancelar sin motivo');
+  releaseCancel!(); await waitFor(() => !cancellation() && dialog()?.textContent?.includes('Cancelada'));
+  data[0].status = 'SCHEDULED';
+  render('/appointments?appointment=appointment-0'); await waitFor(() => !!button('Confirmar', dialog()));
+  for (const [label, pending, feedback, status] of [['Confirmar', 'Confirmando...', 'Cita confirmada.', 'CONFIRMED'], ['No asistió', 'Registrando...', 'Inasistencia registrada.', 'NO_SHOW']]) {
+    failConfirm = true;
+    const count = requests.filter(r => r.path.endsWith('/status')).length;
+    const action = button(label, dialog()); action.click(); action.click(); await tick();
+    check(document.querySelectorAll('[role="dialog"]').length === 1 && button(pending, dialog())?.disabled, `${label}: acción directa con loading`);
+    check(requests.filter(r => r.path.endsWith('/status')).length === count + 1 && requests.at(-1)?.body.status === status, `${label}: doble clic envía una petición con estado correcto`);
+    releaseConfirm!(); await waitFor(() => !!dialog()?.querySelector('[role="alert"]'));
+    check(dialog().textContent?.includes('No tienes permisos') && !button(label, dialog())?.disabled, `${label}: error mantiene detalle y permite reintentar`);
+    await click(label, dialog()); releaseConfirm!(); await waitFor(() => dialog()?.textContent?.includes(feedback));
+    check(!button(label, dialog()) && data[0].status === status, `${label}: éxito actualiza estado y feedback`);
+  }
+  for (const status of ['SCHEDULED', 'CONFIRMED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'NO_SHOW']) {
+    data[0].status = status;
+    for (const nextRole of ['OWNER', 'ASSISTANT', 'PROFESSIONAL']) {
+      role = nextRole;
+      render(`/appointments?appointment=appointment-0&case=${status}`); await tick();
+      await waitFor(() => dialog()?.textContent?.includes('Mariana') && !dialog()?.querySelector('.animate-pulse'));
+      const allowed = nextRole !== 'PROFESSIONAL' && ['SCHEDULED', 'CONFIRMED'].includes(status);
+      check(!!button('No asistió', dialog()) === allowed && !!button('Cancelar cita', dialog()) === allowed && !!button('Confirmar', dialog()) === (allowed && status === 'SCHEDULED'), `Permisos ${nextRole}/${status} conservados`);
+    }
+  }
+  document.body.dataset.appointmentTests = 'passed';
+}
+(new URLSearchParams(location.search).has('detailActions') ? runDetailActions() : new URLSearchParams(location.search).has('focused') ? runFocused() : run()).catch(e => { results.push('FAIL ' + e.message); document.body.dataset.appointmentTests = 'failed'; }).finally(() => { document.getElementById('appointment-test-results')!.textContent = results.join('\n'); });

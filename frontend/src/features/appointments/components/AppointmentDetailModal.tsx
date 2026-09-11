@@ -9,7 +9,6 @@ import { formatTime, formatDate } from '../utils/date';
 import { useAuth } from '../../../core/auth/AuthProvider';
 import { AppointmentFormModal } from './AppointmentFormModal';
 import { CancelAppointmentDialog } from './CancelAppointmentDialog';
-import { StatusConfirmationDialog } from './StatusConfirmationDialog';
 
 interface AppointmentDetailModalProps {
   id: string;
@@ -29,11 +28,11 @@ export function AppointmentDetailModal({ id, onClose, onSuccess }: AppointmentDe
 
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isCancelOpen, setIsCancelOpen] = useState(false);
-  const [isNoShowOpen, setIsNoShowOpen] = useState(false);
-  const confirmingRef = useRef(false);
-  const [isConfirming, setIsConfirming] = useState(false);
-  const [confirmError, setConfirmError] = useState<string | null>(null);
-  const [confirmSuccess, setConfirmSuccess] = useState(false);
+  const updatingStatusRef = useRef(false);
+  const [pendingStatus, setPendingStatus] = useState<'CONFIRMED' | 'NO_SHOW' | null>(null);
+  const isUpdatingStatus = pendingStatus !== null;
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [statusSuccess, setStatusSuccess] = useState<string | null>(null);
   const [isOpeningCare, setIsOpeningCare] = useState(false);
   const [careError, setCareError] = useState<string | null>(null);
 
@@ -154,28 +153,28 @@ export function AppointmentDetailModal({ id, onClose, onSuccess }: AppointmentDe
     }
   }
 
-  const handleConfirm = async () => {
-    if (!detail || !canConfirm || confirmingRef.current || isOpeningCare) return;
-    confirmingRef.current = true;
-    setIsConfirming(true);
-    setConfirmError(null);
-    setConfirmSuccess(false);
+  const handleStatusChange = async (status: 'CONFIRMED' | 'NO_SHOW') => {
+    if (!detail || !(status === 'CONFIRMED' ? canConfirm : canNoShow) || updatingStatusRef.current || isOpeningCare) return;
+    updatingStatusRef.current = true;
+    setPendingStatus(status);
+    setStatusError(null);
+    setStatusSuccess(null);
     try {
-      const updated = await appointmentsApi.updateStatus(detail.id, { status: 'CONFIRMED' });
+      const updated = await appointmentsApi.updateStatus(detail.id, { status });
       setDetail(updated);
-      setConfirmSuccess(true);
+      setStatusSuccess(status === 'CONFIRMED' ? 'Cita confirmada.' : 'Inasistencia registrada.');
       onSuccess();
     } catch (error: unknown) {
-      setConfirmError(getAppointmentErrorMessage(error, 'No fue posible confirmar la cita. Inténtalo nuevamente.'));
+      setStatusError(getAppointmentErrorMessage(error, status === 'CONFIRMED' ? 'No fue posible confirmar la cita. Inténtalo nuevamente.' : 'No fue posible registrar la inasistencia. Inténtalo nuevamente.'));
     } finally {
-      confirmingRef.current = false;
-      setIsConfirming(false);
+      updatingStatusRef.current = false;
+      setPendingStatus(null);
     }
   };
 
   return (
     <>
-      <Modal onClose={onClose} closeOnBackdrop={false} closeOnEscape={!isConfirming} aria-label="Detalle de cita">
+      <Modal onClose={onClose} closeOnBackdrop={false} closeOnEscape={!isUpdatingStatus} aria-label="Detalle de cita">
         <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl max-h-[calc(100dvh-2rem)] overflow-hidden flex flex-col relative animate-slide-up">
           {/* Header */}
           <div className="shrink-0 bg-white border-b border-slate-100 p-4 flex items-center justify-between z-10 rounded-t-2xl">
@@ -184,7 +183,7 @@ export function AppointmentDetailModal({ id, onClose, onSuccess }: AppointmentDe
             </h2>
             <button
               onClick={onClose}
-              disabled={isConfirming}
+              disabled={isUpdatingStatus}
               className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-full transition-colors"
               aria-label="Cerrar"
             >
@@ -303,8 +302,8 @@ export function AppointmentDetailModal({ id, onClose, onSuccess }: AppointmentDe
                 )}
 
                 {/* Actions */}
-                {confirmError && <div role="alert" className="p-3 bg-red-50 text-red-700 border border-red-200 rounded-lg text-sm">{confirmError}</div>}
-                {confirmSuccess && <div role="status" className="p-3 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-sm">Cita confirmada.</div>}
+                {statusError && <div role="alert" className="p-3 bg-red-50 text-red-700 border border-red-200 rounded-lg text-sm">{statusError}</div>}
+                {statusSuccess && <div role="status" className="p-3 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-sm">{statusSuccess}</div>}
                 {careError && (
                   <div className="flex items-start gap-2 p-3 bg-red-50 text-red-700 border border-red-200 rounded-lg text-sm">
                     <AlertCircle
@@ -317,19 +316,19 @@ export function AppointmentDetailModal({ id, onClose, onSuccess }: AppointmentDe
 
                 <div className="flex flex-wrap gap-2 border-t border-slate-200 pt-4">
                   {canEdit && (
-                    <button disabled={isConfirming} onClick={() => setIsEditOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-200 transition-colors">
+                    <button disabled={isUpdatingStatus} onClick={() => setIsEditOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-200 transition-colors">
                       <Edit size={16} /> Editar
                     </button>
                   )}
                   {canConfirm && (
-                    <button onClick={() => void handleConfirm()} disabled={isConfirming || isOpeningCare} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg border border-blue-200 transition-colors">
-                      {isConfirming ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />} {isConfirming ? 'Confirmando...' : 'Confirmar'}
+                    <button onClick={() => void handleStatusChange('CONFIRMED')} disabled={isUpdatingStatus || isOpeningCare} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg border border-blue-200 transition-colors">
+                      {pendingStatus === 'CONFIRMED' ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />} {pendingStatus === 'CONFIRMED' ? 'Confirmando...' : 'Confirmar'}
                     </button>
                   )}
                   {careAction && (
                     <button
                       onClick={() => void handleOpenCare()}
-                      disabled={isOpeningCare || isConfirming}
+                      disabled={isOpeningCare || isUpdatingStatus}
                       className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
                         careAction === 'VIEW'
                           ? 'text-blue-700 bg-blue-50 hover:bg-blue-100 border-blue-200'
@@ -354,12 +353,12 @@ export function AppointmentDetailModal({ id, onClose, onSuccess }: AppointmentDe
                     </button>
                   )}
                   {canNoShow && (
-                    <button disabled={isConfirming} onClick={() => setIsNoShowOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-700 bg-slate-50 hover:bg-slate-200 rounded-lg border border-slate-300 transition-colors">
-                      <UserX size={16} /> No asistió
+                    <button disabled={isUpdatingStatus || isOpeningCare} onClick={() => void handleStatusChange('NO_SHOW')} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-700 bg-slate-50 hover:bg-slate-200 rounded-lg border border-slate-300 transition-colors">
+                      {pendingStatus === 'NO_SHOW' ? <Loader2 size={16} className="animate-spin" /> : <UserX size={16} />} {pendingStatus === 'NO_SHOW' ? 'Registrando...' : 'No asistió'}
                     </button>
                   )}
                   {canCancel && (
-                    <button disabled={isConfirming} onClick={() => setIsCancelOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 bg-white hover:bg-red-50 rounded-lg border border-red-200 transition-colors ml-auto">
+                    <button disabled={isUpdatingStatus} onClick={() => setIsCancelOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 bg-white hover:bg-red-50 rounded-lg border border-red-200 transition-colors ml-auto">
                       <Ban size={16} /> Cancelar cita
                     </button>
                   )}
@@ -381,23 +380,15 @@ export function AppointmentDetailModal({ id, onClose, onSuccess }: AppointmentDe
             onSuccess={handleActionSuccess}
             editAppointment={detail}
           />
-          <CancelAppointmentDialog
+          {isCancelOpen && <CancelAppointmentDialog
             isOpen={isCancelOpen}
             onClose={() => setIsCancelOpen(false)}
             onSuccess={handleActionSuccess}
             appointmentId={detail.id}
-            patientName={`${detail.patient.firstName} ${detail.patient.lastName}`}
+            patientName={[detail.patient.firstName, detail.patient.lastName, detail.patient.secondLastName].filter(Boolean).join(' ')}
             appointmentDateTime={`${formatDate(detail.startAt)} a las ${formatTime(detail.startAt)}`}
-          />
-          {isNoShowOpen && (
-            <StatusConfirmationDialog
-              isOpen={isNoShowOpen}
-              onClose={() => setIsNoShowOpen(false)}
-              onSuccess={handleActionSuccess}
-              appointmentId={detail.id}
-              patientName={`${detail.patient.firstName} ${detail.patient.lastName}`}
-            />
-          )}
+          />}
+
         </>
       )}
     </>
