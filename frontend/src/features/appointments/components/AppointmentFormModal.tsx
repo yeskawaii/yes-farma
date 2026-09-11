@@ -4,7 +4,7 @@ import { useAuth } from '../../../core/auth/AuthProvider';
 import { PatientSelector } from './PatientSelector';
 import { ProfessionalSelector } from './ProfessionalSelector';
 import { appointmentsApi, getAppointmentErrorMessage } from '../api';
-import { getClinicCivilDate, getClinicTime, civilDateAndTimeToIso } from '../utils/date';
+import { getClinicCivilDate, getClinicTime, civilDateAndTimeToIso, getNewAppointmentStart } from '../utils/date';
 import type { AppointmentDetail } from '../types';
 
 interface AppointmentFormModalProps {
@@ -12,10 +12,11 @@ interface AppointmentFormModalProps {
   onClose: () => void;
   onSuccess: () => void;
   initialDate?: string;
+  initialTime?: string;
   editAppointment?: AppointmentDetail;
 }
 
-export function AppointmentFormModal({ isOpen, onClose, onSuccess, initialDate, editAppointment }: AppointmentFormModalProps) {
+export function AppointmentFormModal({ isOpen, onClose, onSuccess, initialDate, initialTime, editAppointment }: AppointmentFormModalProps) {
   const formId = useId();
   const { activeRole, memberships, activeClinicId } = useAuth();
 
@@ -46,15 +47,16 @@ export function AppointmentFormModal({ isOpen, onClose, onSuccess, initialDate, 
       } else {
         setPatientId('');
         setProfessionalId('');
-        setDate(initialDate || getClinicCivilDate(new Date().toISOString()));
-        setStartTime('');
+        const initial = getNewAppointmentStart(initialDate, initialTime);
+        setDate(initial.date);
+        setStartTime(initial.time);
         setEndTime('');
         setReason('');
         setNotes('');
       }
       setError(null);
     }
-  }, [isOpen, isEditing, editAppointment, initialDate]);
+  }, [isOpen, isEditing, editAppointment, initialDate, initialTime]);
 
   if (!isOpen) return null;
 
@@ -75,8 +77,10 @@ export function AppointmentFormModal({ isOpen, onClose, onSuccess, initialDate, 
     setError(null);
 
     try {
-      const startAtIso = civilDateAndTimeToIso(date, startTime);
-      const endAtIso = civilDateAndTimeToIso(date, endTime);
+      const startAtIso = isEditing && date === getClinicCivilDate(editAppointment.startAt) && startTime === getClinicTime(editAppointment.startAt)
+        ? editAppointment.startAt : civilDateAndTimeToIso(date, startTime);
+      const endAtIso = isEditing && date === getClinicCivilDate(editAppointment.endAt) && endTime === getClinicTime(editAppointment.endAt)
+        ? editAppointment.endAt : civilDateAndTimeToIso(date, endTime);
 
       const startMs = new Date(startAtIso).getTime();
       const endMs = new Date(endAtIso).getTime();
@@ -145,6 +149,16 @@ export function AppointmentFormModal({ isOpen, onClose, onSuccess, initialDate, 
 
   const minutes = (time: string) => { const [h, m] = time.split(':').map(Number); return h * 60 + m; };
   const duration = startTime && endTime ? minutes(endTime) - minutes(startTime) : 0;
+  const timeAt = (value: number) => `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`;
+  const timeOptions = Array.from({ length: 96 }, (_, index) => timeAt(index * 15));
+  const optionsFor = (value: string) => value && !timeOptions.includes(value) ? [...timeOptions, value].sort() : timeOptions;
+  const changeStartTime = (value: string) => {
+    setStartTime(value);
+    if (duration > 0) {
+      const end = minutes(value) + duration;
+      setEndTime(end < 1440 ? timeAt(end) : '');
+    }
+  };
   const inputClass = 'w-full min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-50';
   const labelClass = 'mb-1.5 block text-sm font-medium text-slate-700';
 
@@ -174,11 +188,16 @@ export function AppointmentFormModal({ isOpen, onClose, onSuccess, initialDate, 
               </div>
               <div className="min-w-0">
                 <label htmlFor={`${formId}-start`} className={labelClass}>Hora de inicio</label>
-                <input id={`${formId}-start`} type="time" className={inputClass} value={startTime} onChange={e => setStartTime(e.target.value)} disabled={submitting} required />
+                <select id={`${formId}-start`} className={inputClass} value={startTime} onChange={e => changeStartTime(e.target.value)} disabled={submitting} required>
+                  {optionsFor(startTime).map(time => <option key={time} value={time}>{time}</option>)}
+                </select>
               </div>
               <div className="min-w-0">
                 <label htmlFor={`${formId}-end`} className={labelClass}>Hora de término</label>
-                <input id={`${formId}-end`} type="time" className={inputClass} value={endTime} onChange={e => setEndTime(e.target.value)} disabled={submitting} required />
+                <select id={`${formId}-end`} className={inputClass} value={endTime} onChange={e => setEndTime(e.target.value)} disabled={submitting} required>
+                  <option value="">Selecciona hora</option>
+                  {optionsFor(endTime).map(time => <option key={time} value={time}>{time}</option>)}
+                </select>
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2 text-xs">

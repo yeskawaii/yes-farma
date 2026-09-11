@@ -1,18 +1,16 @@
 import { Modal } from '../../../shared/components/Modal/Modal';
 import { useState } from 'react';
 import { appointmentsApi, getAppointmentErrorMessage } from '../api';
-import type { UpdateAppointmentStatusInput } from '../types';
 
 interface StatusConfirmationDialogProps {
   isOpen: boolean;
   appointmentId: string;
   patientName: string;
-  newStatus: UpdateAppointmentStatusInput['status'];
   onClose: () => void;
   onSuccess: () => void;
 }
 
-export function StatusConfirmationDialog({ isOpen, appointmentId, patientName, newStatus, onClose, onSuccess }: StatusConfirmationDialogProps) {
+export function StatusConfirmationDialog({ isOpen, appointmentId, patientName, onClose, onSuccess }: StatusConfirmationDialogProps) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -22,7 +20,7 @@ export function StatusConfirmationDialog({ isOpen, appointmentId, patientName, n
     setSubmitting(true);
     setError(null);
     try {
-      await appointmentsApi.updateStatus(appointmentId, { status: newStatus });
+      await appointmentsApi.updateStatus(appointmentId, { status: 'NO_SHOW' });
       onSuccess();
       onClose();
     } catch (error: unknown) {
@@ -31,21 +29,10 @@ export function StatusConfirmationDialog({ isOpen, appointmentId, patientName, n
     }
   };
 
-  let title = '';
-  let message = '';
-  let confirmText = '';
-  let confirmColor = 'bg-blue-600 hover:bg-blue-700';
-
-  if (newStatus === 'NO_SHOW') {
-    title = 'Confirmar inasistencia';
-    message = `¿Estás seguro que deseas registrar que ${patientName} no asistió a la cita?`;
-    confirmText = 'Registrar inasistencia';
-    confirmColor = 'bg-orange-600 hover:bg-orange-700';
-  } else if (newStatus === 'CONFIRMED') {
-    title = 'Confirmar cita';
-    message = `¿Confirmar la asistencia de ${patientName}?`;
-    confirmText = 'Confirmar cita';
-  }
+  const title = 'Confirmar inasistencia';
+  const message = `¿Estás seguro que deseas registrar que ${patientName} no asistió a la cita?`;
+  const confirmText = 'Registrar inasistencia';
+  const confirmColor = 'bg-orange-600 hover:bg-orange-700';
 
   return (
     <Modal onClose={onClose} closeOnBackdrop={false} closeOnEscape={!submitting} aria-label={title}>

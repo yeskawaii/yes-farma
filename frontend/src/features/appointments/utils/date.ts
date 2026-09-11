@@ -197,3 +197,15 @@ export function formatMonthCivil(date: CivilDate): string {
 export function formatCalendarDate(date: CivilDate): string {
   return createFormatter({ day: 'numeric', month: 'short', year: 'numeric' }).format(civilDateToUtcMidnight(date));
 }
+
+// Only defaults are rounded; explicit selections and existing appointments are preserved.
+export function getNewAppointmentStart(initialDate?: CivilDate, initialTime?: string, now = new Date()) {
+  if (initialTime) return { date: initialDate || getCivilDate(now), time: initialTime };
+  const [hour, minute] = getClinicTime(now.toISOString()).split(':').map(Number);
+  const roundedMinutes = Math.ceil((hour * 60 + minute) / 15) * 15;
+  const date = initialDate || getCivilDate(now);
+  return {
+    date: roundedMinutes === 1440 && !initialDate ? addDaysCivil(date, 1) : date,
+    time: `${String(Math.floor(roundedMinutes / 60) % 24).padStart(2, '0')}:${String(roundedMinutes % 60).padStart(2, '0')}`,
+  };
+}

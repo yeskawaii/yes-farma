@@ -4,6 +4,8 @@ import { AuthProvider } from '../../src/core/auth/AuthProvider';
 import { MainLayout } from '../../src/shared/components/Layout/MainLayout';
 import { AppointmentsPage } from '../../src/features/appointments/AppointmentsPage';
 import { getClinicTime, getMonthDays, getMonthlyRanges, addMonthsCivil, getCivilDate, addDaysCivil, civilDateAndTimeToIso } from '../../src/features/appointments/utils/date';
+import { AppointmentFormModal } from '../../src/features/appointments/components/AppointmentFormModal';
+import { getNewAppointmentStart } from '../../src/features/appointments/utils/date';
 import './styles.css';
 
 const today = getCivilDate();
@@ -16,6 +18,8 @@ let data = Array.from({ length: 28 }, (_, id) => appointment(id, id < 6 ? today 
 let role = 'OWNER';
 let failCreate = false;
 let failList = false;
+let failConfirm = false;
+let releaseConfirm: (() => void) | undefined;
 const requests: { path: string; body?: any; method?: string }[] = [];
 window.fetch = async (input, init) => {
   const path = String(input); const body = init?.body ? JSON.parse(String(init.body)) : undefined;
@@ -33,6 +37,12 @@ window.fetch = async (input, init) => {
   if (path.endsWith('/appointments') && body) {
     if (failCreate) { failCreate = false; return Response.json({ error: { code: 'APPOINTMENT_CONFLICT' } }, { status: 409 }); }
     const item = { ...appointment(30, future), ...body, id: 'created' }; data.push(item); return Response.json(item);
+  }
+  if (path.endsWith('/status')) {
+    await new Promise<void>(resolve => { releaseConfirm = resolve; });
+    if (failConfirm) { failConfirm = false; return Response.json({ error: { code: 'FORBIDDEN' } }, { status: 403 }); }
+    const target = data.find(a => path.endsWith(`/appointments/${a.id}/status`))!;
+    Object.assign(target, body); return Response.json(target);
   }
   const item = data.find(a => path.endsWith(`/appointments/${a.id}`));
   if (item) { if (body) Object.assign(item, body); return Response.json(item); }
@@ -73,8 +83,8 @@ async function run() {
   const create = document.querySelector<HTMLButtonElement>('[aria-label^="Nueva cita el"]')!; create.click(); await waitFor(() => !!dialog());
   check(!!dialog().querySelector<HTMLInputElement>('input[type="date"]')?.value, 'Crear desde día preselecciona fecha');
   await set('input[type="text"]', 'Mariana', dialog()); await waitFor(() => !!button('Mariana López García', dialog())); await click('Mariana López García', dialog());
-  await set('input[type="date"]', future, dialog()); await set('input[type="time"]', '10:00', dialog()); await click('45 min', dialog());
-  await set('select', 'professional', dialog());
+  await set('input[type="date"]', future, dialog()); await set('select[id$="-start"]', '10:00', dialog()); await click('45 min', dialog());
+  await set('section[aria-label="Profesional de la cita"] select', 'professional', dialog());
   check(dialog().textContent?.includes('45 min en total'), 'Duración rápida calcula término');
   await checkpoint('form');
   failCreate = true; await click('Guardar cita', dialog()); await waitFor(() => !!dialog()?.querySelector('[role="alert"]'));
@@ -88,7 +98,7 @@ async function run() {
   await click('Editar', dialog()); await waitFor(() => document.querySelectorAll('[role="dialog"]').length === 2);
   const edit = document.querySelectorAll<HTMLElement>('[role="dialog"]')[1];
   check(edit.textContent?.includes('Mariana López García') && !button('Cambiar', edit), 'Edición conserva paciente bloqueado');
-  check(edit.querySelector<HTMLInputElement>('input[type="time"]')?.value === '09:00', 'Edición precarga hora válida');
+  check(edit.querySelector<HTMLSelectElement>('select[id$="-start"]')?.value === '09:00', 'Edición precarga hora válida');
   await click('Cancelar', edit);
   role = 'PROFESSIONAL'; render('/appointments?appointment=appointment-1'); await waitFor(() => dialog()?.textContent?.includes('Diego'));
   check(!button('Editar', dialog()) && !button('Iniciar atención', dialog()) && !button('Cancelar cita', dialog()), 'Profesional ajeno no obtiene acciones');
@@ -100,4 +110,59 @@ async function run() {
   failList = true; await click('Mes'); await waitFor(() => !!button('Reintentar')); await click('Reintentar'); await waitFor(() => !!document.querySelector('[aria-label^="Ver día"]')); check(true, 'Error de agenda permite reintento');
   document.body.dataset.appointmentTests = 'passed';
 }
-run().catch(e => { results.push('FAIL ' + e.message); document.body.dataset.appointmentTests = 'failed'; }).finally(() => { document.getElementById('appointment-test-results')!.textContent = results.join('\n'); });
+async function runFocused() {
+  for (const [input, expected] of [['09:00', '09:00'], ['09:01', '09:15'], ['09:14', '09:15'], ['09:15', '09:15'], ['09:16', '09:30'], ['09:34', '09:45'], ['09:46', '10:00']]) {
+    check(getNewAppointmentStart(undefined, undefined, new Date(civilDateAndTimeToIso(future, input))).time === expected, `Redondeo ${input} → ${expected}`);
+  }
+  const midnight = getNewAppointmentStart(undefined, undefined, new Date(civilDateAndTimeToIso(future, '23:46')));
+  check(midnight.time === '00:00' && midnight.date === addDaysCivil(future, 1), 'Redondeo cruza medianoche');
+  const selected = getNewAppointmentStart(future, '09:34');
+  check(selected.date === future && selected.time === '09:34', 'Selección explícita no se redondea');
+  root.render(<AuthProvider><MemoryRouter><AppointmentFormModal isOpen initialDate={future} initialTime="09:34" onClose={() => {}} onSuccess={() => {}} /></MemoryRouter></AuthProvider>);
+  await waitFor(() => dialog()?.querySelector<HTMLSelectElement>('select[id$="-start"]')?.value === '09:34');
+  check(dialog().querySelector<HTMLInputElement>('input[type="date"]')?.value === future, 'Formulario conserva fecha/hora explícitas');
+  render('/appointments?new=1'); await tick(); await waitFor(() => !!button('Guardar cita', dialog()));
+  await waitFor(() => !!dialog()?.querySelector<HTMLSelectElement>('select[id$="-start"]')?.value);
+  const start = dialog().querySelector<HTMLSelectElement>('select[id$="-start"]')!;
+  check(start.options.length === 96 && [...start.options].every(o => Number(o.value.slice(3)) % 15 === 0), 'Selector ofrece solamente 96 bloques de 15 minutos');
+  check(start.value === getNewAppointmentStart().time, 'Nueva cita usa hora redondeada por defecto');
+  await set('input[type="date"]', future, dialog());
+  await set('select[id$="-start"]', '10:00', dialog()); await click('45 min', dialog());
+  await set('select[id$="-start"]', '10:15', dialog());
+  check(dialog().querySelector<HTMLSelectElement>('select[id$="-end"]')?.value === '11:00', 'Cambio de inicio mantiene duración actual');
+  await set('input[type="text"]', 'Mariana', dialog()); await waitFor(() => !!button('Mariana López García', dialog())); await click('Mariana López García', dialog());
+  await set('section[aria-label="Profesional de la cita"] select', 'professional', dialog());
+  await checkpoint('form');
+  await click('Guardar cita', dialog()); await waitFor(() => !dialog());
+  const created = requests.find(r => r.body?.patientId)?.body;
+  check(created.startAt === civilDateAndTimeToIso(future, '10:15') && created.endAt === civilDateAndTimeToIso(future, '11:00'), 'Alta guarda inicio y duración correctos');
+  data[0].startAt = civilDateAndTimeToIso(future, '09:34').replace(':00.000Z', ':27.000Z');
+  data[0].endAt = civilDateAndTimeToIso(future, '10:07').replace(':00.000Z', ':27.000Z');
+  const originalStart = data[0].startAt; const originalEnd = data[0].endAt;
+  render('/appointments?appointment=appointment-0'); await waitFor(() => !!button('Editar', dialog()));
+  await click('Editar', dialog()); await waitFor(() => document.querySelectorAll('[role="dialog"]').length === 2);
+  const edit = document.querySelectorAll<HTMLElement>('[role="dialog"]')[1];
+  check(edit.querySelector<HTMLSelectElement>('select[id$="-start"]')?.value === '09:34' && edit.querySelector<HTMLSelectElement>('select[id$="-end"]')?.value === '10:07', 'Edición conserva horas históricas fuera de bloque');
+  await click('Guardar cambios', edit); await waitFor(() => document.querySelectorAll('[role="dialog"]').length === 1 && !!button('Confirmar', dialog()));
+  const updated = requests.find(r => r.method === 'PATCH' && r.path.endsWith('/appointment-0'))?.body;
+  check(updated.startAt === originalStart && updated.endAt === originalEnd, 'Guardar edición sin cambiar horario conserva timestamps exactos');
+  failConfirm = true;
+  const confirm = button('Confirmar', dialog()); confirm.click(); confirm.click(); await tick();
+  check(document.querySelectorAll('[role="dialog"]').length === 1 && button('Confirmando...', dialog())?.disabled, 'Confirmación directa muestra loading sin segundo modal');
+  check(requests.filter(r => r.path.endsWith('/status')).length === 1, 'Doble click envía una sola petición');
+  releaseConfirm!(); await waitFor(() => !!dialog()?.querySelector('[role="alert"]'));
+  check(dialog().textContent?.includes('No tienes permisos') && !!button('Confirmar', dialog()), 'Error de confirmación mantiene detalle y permite reintento');
+  await click('Confirmar', dialog()); releaseConfirm!(); await waitFor(() => !!dialog()?.querySelector('[role="status"]'));
+  check(dialog().textContent?.includes('Confirmada') && dialog().textContent?.includes('Cita confirmada.') && !button('Confirmar', dialog()), 'Éxito actualiza estado y muestra feedback');
+  await checkpoint('detail');
+  await click('No asistió', dialog()); check(document.querySelectorAll('[role="dialog"]').length === 2, 'Inasistencia conserva confirmación');
+  await click('Cancelar', document.querySelectorAll<HTMLElement>('[role="dialog"]')[1]);
+  await click('Cancelar cita', dialog()); check(document.querySelectorAll('[role="dialog"]').length === 2, 'Cancelación conserva diálogo');
+  data[0].status = 'SCHEDULED';
+  role = 'PROFESSIONAL'; render('/appointments?appointment=appointment-0'); await waitFor(() => dialog()?.textContent?.includes('Mariana') && !button('Editar', dialog()));
+  check(!button('Confirmar', dialog()), 'Profesional ajeno no puede confirmar');
+  role = 'ASSISTANT'; render('/appointments?appointment=appointment-0'); await waitFor(() => !!button('Confirmar', dialog()));
+  check(!button('Iniciar atención', dialog()), 'Asistente puede confirmar y conserva permisos clínicos');
+  document.body.dataset.appointmentTests = 'passed';
+}
+(new URLSearchParams(location.search).has('focused') ? runFocused() : run()).catch(e => { results.push('FAIL ' + e.message); document.body.dataset.appointmentTests = 'failed'; }).finally(() => { document.getElementById('appointment-test-results')!.textContent = results.join('\n'); });

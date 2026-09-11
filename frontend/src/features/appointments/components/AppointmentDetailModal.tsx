@@ -1,9 +1,9 @@
 import { Modal } from '../../../shared/components/Modal/Modal';
 import { X, Clock, User, Stethoscope, FileText, AlertCircle, RefreshCw, Edit, Check, Play, Eye, Loader2, UserX, Ban } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { appointmentsApi, getAppointmentErrorMessage } from '../api';
-import type { AppointmentDetail, UpdateAppointmentStatusInput } from '../types';
+import type { AppointmentDetail } from '../types';
 import { appointmentStatusMap } from '../utils/status';
 import { formatTime, formatDate } from '../utils/date';
 import { useAuth } from '../../../core/auth/AuthProvider';
@@ -29,7 +29,11 @@ export function AppointmentDetailModal({ id, onClose, onSuccess }: AppointmentDe
 
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isCancelOpen, setIsCancelOpen] = useState(false);
-  const [statusConfirm, setStatusConfirm] = useState<{ open: boolean; status: UpdateAppointmentStatusInput['status'] | null }>({ open: false, status: null });
+  const [isNoShowOpen, setIsNoShowOpen] = useState(false);
+  const confirmingRef = useRef(false);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
+  const [confirmSuccess, setConfirmSuccess] = useState(false);
   const [isOpeningCare, setIsOpeningCare] = useState(false);
   const [careError, setCareError] = useState<string | null>(null);
 
@@ -150,9 +154,28 @@ export function AppointmentDetailModal({ id, onClose, onSuccess }: AppointmentDe
     }
   }
 
+  const handleConfirm = async () => {
+    if (!detail || !canConfirm || confirmingRef.current || isOpeningCare) return;
+    confirmingRef.current = true;
+    setIsConfirming(true);
+    setConfirmError(null);
+    setConfirmSuccess(false);
+    try {
+      const updated = await appointmentsApi.updateStatus(detail.id, { status: 'CONFIRMED' });
+      setDetail(updated);
+      setConfirmSuccess(true);
+      onSuccess();
+    } catch (error: unknown) {
+      setConfirmError(getAppointmentErrorMessage(error, 'No fue posible confirmar la cita. Inténtalo nuevamente.'));
+    } finally {
+      confirmingRef.current = false;
+      setIsConfirming(false);
+    }
+  };
+
   return (
     <>
-      <Modal onClose={onClose} closeOnBackdrop={false} aria-label="Detalle de cita">
+      <Modal onClose={onClose} closeOnBackdrop={false} closeOnEscape={!isConfirming} aria-label="Detalle de cita">
         <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl max-h-[calc(100dvh-2rem)] overflow-hidden flex flex-col relative animate-slide-up">
           {/* Header */}
           <div className="shrink-0 bg-white border-b border-slate-100 p-4 flex items-center justify-between z-10 rounded-t-2xl">
@@ -161,6 +184,7 @@ export function AppointmentDetailModal({ id, onClose, onSuccess }: AppointmentDe
             </h2>
             <button
               onClick={onClose}
+              disabled={isConfirming}
               className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-full transition-colors"
               aria-label="Cerrar"
             >
@@ -279,6 +303,8 @@ export function AppointmentDetailModal({ id, onClose, onSuccess }: AppointmentDe
                 )}
 
                 {/* Actions */}
+                {confirmError && <div role="alert" className="p-3 bg-red-50 text-red-700 border border-red-200 rounded-lg text-sm">{confirmError}</div>}
+                {confirmSuccess && <div role="status" className="p-3 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-sm">Cita confirmada.</div>}
                 {careError && (
                   <div className="flex items-start gap-2 p-3 bg-red-50 text-red-700 border border-red-200 rounded-lg text-sm">
                     <AlertCircle
@@ -291,19 +317,19 @@ export function AppointmentDetailModal({ id, onClose, onSuccess }: AppointmentDe
 
                 <div className="flex flex-wrap gap-2 border-t border-slate-200 pt-4">
                   {canEdit && (
-                    <button onClick={() => setIsEditOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-200 transition-colors">
+                    <button disabled={isConfirming} onClick={() => setIsEditOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-200 transition-colors">
                       <Edit size={16} /> Editar
                     </button>
                   )}
                   {canConfirm && (
-                    <button onClick={() => setStatusConfirm({ open: true, status: 'CONFIRMED' })} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg border border-blue-200 transition-colors">
-                      <Check size={16} /> Confirmar
+                    <button onClick={() => void handleConfirm()} disabled={isConfirming || isOpeningCare} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg border border-blue-200 transition-colors">
+                      {isConfirming ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />} {isConfirming ? 'Confirmando...' : 'Confirmar'}
                     </button>
                   )}
                   {careAction && (
                     <button
                       onClick={() => void handleOpenCare()}
-                      disabled={isOpeningCare}
+                      disabled={isOpeningCare || isConfirming}
                       className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
                         careAction === 'VIEW'
                           ? 'text-blue-700 bg-blue-50 hover:bg-blue-100 border-blue-200'
@@ -328,12 +354,12 @@ export function AppointmentDetailModal({ id, onClose, onSuccess }: AppointmentDe
                     </button>
                   )}
                   {canNoShow && (
-                    <button onClick={() => setStatusConfirm({ open: true, status: 'NO_SHOW' })} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-700 bg-slate-50 hover:bg-slate-200 rounded-lg border border-slate-300 transition-colors">
+                    <button disabled={isConfirming} onClick={() => setIsNoShowOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-700 bg-slate-50 hover:bg-slate-200 rounded-lg border border-slate-300 transition-colors">
                       <UserX size={16} /> No asistió
                     </button>
                   )}
                   {canCancel && (
-                    <button onClick={() => setIsCancelOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 bg-white hover:bg-red-50 rounded-lg border border-red-200 transition-colors ml-auto">
+                    <button disabled={isConfirming} onClick={() => setIsCancelOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 bg-white hover:bg-red-50 rounded-lg border border-red-200 transition-colors ml-auto">
                       <Ban size={16} /> Cancelar cita
                     </button>
                   )}
@@ -363,14 +389,13 @@ export function AppointmentDetailModal({ id, onClose, onSuccess }: AppointmentDe
             patientName={`${detail.patient.firstName} ${detail.patient.lastName}`}
             appointmentDateTime={`${formatDate(detail.startAt)} a las ${formatTime(detail.startAt)}`}
           />
-          {statusConfirm.status && (
+          {isNoShowOpen && (
             <StatusConfirmationDialog
-              isOpen={statusConfirm.open}
-              onClose={() => setStatusConfirm({ open: false, status: null })}
+              isOpen={isNoShowOpen}
+              onClose={() => setIsNoShowOpen(false)}
               onSuccess={handleActionSuccess}
               appointmentId={detail.id}
               patientName={`${detail.patient.firstName} ${detail.patient.lastName}`}
-              newStatus={statusConfirm.status}
             />
           )}
         </>
