@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, AlertCircle, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, AlertCircle, RefreshCw, Plus } from 'lucide-react';
 import { appointmentsApi } from './api';
 import type { AppointmentListItem } from './types';
 import {
@@ -13,17 +13,20 @@ import {
   civilDateToUtcMidnight
 } from './utils/date';
 import type { CivilDate } from './utils/date';
+import { MonthlyView } from './components/MonthlyView';
+import { appointmentStatusMap } from './utils/status';
+import { addMonthsCivil, getMonthlyRanges, formatMonthCivil, formatCalendarDate } from './utils/date';
 import { DailyView } from './components/DailyView';
 import { WeeklyView } from './components/WeeklyView';
 import { AppointmentDetailModal } from './components/AppointmentDetailModal';
 import { AppointmentFormModal } from './components/AppointmentFormModal';
 import { useAuth } from '../../core/auth/AuthProvider';
 
-type ViewMode = 'daily' | 'weekly';
+type ViewMode = 'daily' | 'weekly' | 'monthly';
 
 export function AppointmentsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const { activeRole } = useAuth();
+  const { activeRole, activeClinicId } = useAuth();
 
   const [viewMode, setViewMode] = useState<ViewMode>('daily');
   const [currentDate, setCurrentDate] = useState<CivilDate>(getCivilDate());
@@ -46,6 +49,13 @@ export function AppointmentsPage() {
   }, [searchParams, setSearchParams]);
 
   const [appointments, setAppointments] = useState<AppointmentListItem[]>([]);
+  const [statusFilter, setStatusFilter] = useState('');
+  const [professionalFilter, setProfessionalFilter] = useState('');
+  const filteredAppointments = appointments.filter(a => (!statusFilter || a.status === statusFilter) && (!professionalFilter || a.professionalMembershipId === professionalFilter));
+  const professionals = [...new Map(appointments.map(a => [a.professionalMembershipId, a.professionalMembership.user])).entries()];
+  const canCreate = ['OWNER', 'ASSISTANT', 'PROFESSIONAL'].includes(activeRole || '');
+  const selectDay = (date: CivilDate) => { setCurrentDate(date); setViewMode('daily'); };
+  const createOnDay = (date: CivilDate) => { setCurrentDate(date); setIsFormOpen(true); };
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,11 +68,9 @@ export function AppointmentsPage() {
       setLoading(true);
       setError(null);
 
-      const { startAt, endAt } = viewMode === 'daily'
-        ? getDailyRange(currentDate)
-        : getWeeklyRange(currentDate);
-
-      const res = await appointmentsApi.list({ startAt, endAt });
+      const ranges = viewMode === 'monthly' ? getMonthlyRanges(currentDate) : [viewMode === 'daily' ? getDailyRange(currentDate) : getWeeklyRange(currentDate)];
+      const results = await Promise.all(ranges.map(range => appointmentsApi.list(range)));
+      const res = [...new Map(results.flat().map(item => [item.id, item])).values()].sort((a, b) => a.startAt.localeCompare(b.startAt));
 
       if (currentRequestId === requestCounter.current) {
         setAppointments(res);
@@ -77,15 +85,22 @@ export function AppointmentsPage() {
   };
 
   useEffect(() => {
+    setAppointments([]);
+    setStatusFilter('');
+    setProfessionalFilter('');
+  }, [activeClinicId]);
+
+  useEffect(() => {
     fetchAppointments();
-  }, [currentDate, viewMode]);
+    return () => { requestCounter.current++; };
+  }, [currentDate, viewMode, activeClinicId]);
 
   const handlePrev = () => {
-    setCurrentDate(prev => addDaysCivil(prev, viewMode === 'daily' ? -1 : -7));
+    setCurrentDate(prev => viewMode === 'monthly' ? addMonthsCivil(prev, -1) : addDaysCivil(prev, viewMode === 'daily' ? -1 : -7));
   };
 
   const handleNext = () => {
-    setCurrentDate(prev => addDaysCivil(prev, viewMode === 'daily' ? 1 : 7));
+    setCurrentDate(prev => viewMode === 'monthly' ? addMonthsCivil(prev, 1) : addDaysCivil(prev, viewMode === 'daily' ? 1 : 7));
   };
 
   const handleToday = () => {
@@ -93,25 +108,25 @@ export function AppointmentsPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6 animate-slide-up h-full">
+    <div className="flex flex-col gap-4 animate-slide-up h-full">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Agenda</h1>
-          <p className="text-slate-500 mt-1">Gestiona las citas programadas en la clínica.</p>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Agenda</h1>
+          <p className="text-sm text-slate-500 mt-1">Gestiona las citas programadas en la clínica.</p>
         </div>
-        {['OWNER', 'ASSISTANT', 'PROFESSIONAL'].includes(activeRole || '') && (
+        {canCreate && (
           <button
             onClick={() => setIsFormOpen(true)}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700"
           >
-            Nueva cita
+            <Plus size={16} /> Nueva cita
           </button>
         )}
       </div>
 
       {/* Toolbar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-3 rounded-xl border border-slate-200 shadow-sm sticky top-0 z-20">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
 
         {/* Date Navigation */}
         <div className="flex items-center gap-2">
@@ -130,10 +145,10 @@ export function AppointmentsPage() {
             >
               <ChevronLeft size={20} />
             </button>
-            <div className="px-4 py-2 font-semibold text-slate-900 text-sm min-w-[140px] text-center capitalize">
+            <div className="px-2 sm:px-4 py-2 font-semibold text-slate-900 text-xs sm:text-sm text-center capitalize">
               {viewMode === 'daily'
                 ? formatDate(civilDateToUtcMidnight(currentDate))
-                : `Semana del ${civilDateToUtcMidnight(getStartOfWeekCivil(currentDate)).getDate()}`}
+                : viewMode === 'monthly' ? formatMonthCivil(currentDate) : `${formatCalendarDate(getStartOfWeekCivil(currentDate))} – ${formatCalendarDate(addDaysCivil(getStartOfWeekCivil(currentDate), 6))}`}
             </div>
             <button
               onClick={handleNext}
@@ -147,19 +162,28 @@ export function AppointmentsPage() {
 
         {/* View Toggle */}
         <div className="flex items-center bg-slate-100 p-1 rounded-lg">
-          <button
-            onClick={() => setViewMode('daily')}
-            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'daily' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
-          >
-            Día
-          </button>
-          <button
-            onClick={() => setViewMode('weekly')}
-            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${viewMode === 'weekly' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
-          >
-            Semana
-          </button>
+          {([['daily', 'Día'], ['weekly', 'Semana'], ['monthly', 'Mes']] as const).map(([mode, label]) => (
+            <button key={mode} onClick={() => setViewMode(mode)} aria-pressed={viewMode === mode} className={`flex-1 px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${viewMode === mode ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>{label}</button>
+          ))}
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <label className="flex items-center gap-2 text-slate-500">Estado
+          <select aria-label="Filtrar por estado" value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="max-w-44 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-slate-700">
+            <option value="">Todos</option>
+            {Object.entries(appointmentStatusMap).map(([value, status]) => <option key={value} value={value}>{status.label}</option>)}
+          </select>
+        </label>
+        <label className="flex items-center gap-2 text-slate-500">Profesional
+          <select aria-label="Filtrar por profesional" value={professionalFilter} onChange={e => setProfessionalFilter(e.target.value)} className="max-w-48 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-slate-700">
+            <option value="">Todos</option>
+            {professionalFilter && !professionals.some(([id]) => id === professionalFilter) && <option value={professionalFilter}>Seleccionado (sin citas)</option>}
+            {professionals.map(([id, user]) => <option key={id} value={id}>{user.firstName} {user.lastName}</option>)}
+          </select>
+        </label>
+        {(statusFilter || professionalFilter) && <button onClick={() => { setStatusFilter(''); setProfessionalFilter(''); }} className="text-blue-600 px-2 py-1.5">Limpiar filtros</button>}
+        {!loading && !error && <span role="status" className="ml-auto text-xs text-slate-500">{filteredAppointments.length} citas{statusFilter || professionalFilter ? ' con estos filtros' : ' en el período visible'}</span>}
       </div>
 
       {/* Content Area */}
@@ -186,20 +210,26 @@ export function AppointmentsPage() {
             </div>
           </div>
         ) : (
-          viewMode === 'daily' ? (
+          viewMode === 'monthly' ? (
+            <MonthlyView date={currentDate} appointments={filteredAppointments} onSelectAppointment={setSelectedAppointmentId} onSelectDay={selectDay} onCreate={canCreate ? createOnDay : undefined} />
+          ) : viewMode === 'daily' ? (
             <DailyView
               date={currentDate}
-              appointments={appointments}
+              appointments={filteredAppointments}
               onSelectAppointment={setSelectedAppointmentId}
             />
           ) : (
             <WeeklyView
               startDate={getStartOfWeekCivil(currentDate)}
-              appointments={appointments}
+              appointments={filteredAppointments}
               onSelectAppointment={setSelectedAppointmentId}
             />
           )
         )}
+      </div>
+
+      <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-slate-500" aria-label="Estados de cita">
+        {Object.entries(appointmentStatusMap).map(([key, status]) => <span key={key} className="inline-flex items-center gap-1.5"><span className={`h-2 w-2 rounded-full ${status.dot}`} />{status.label}</span>)}
       </div>
 
       {/* Detail Modal */}

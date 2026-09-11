@@ -154,10 +154,46 @@ export function civilDateAndTimeToIso(civilDate: CivilDate, time: string): strin
 
 // Extrae HH:mm de un ISO en la zona de la clínica
 export function getClinicTime(isoDate: string): string {
-  return formatTime(isoDate);
+  return createFormatter({ hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(isoDate));
 }
 
 // Devuelve la fecha civil (YYYY-MM-DD) de un ISO en la zona de la clínica
 export function getClinicCivilDate(isoDate: string): CivilDate {
   return getCivilDate(isoDate);
+}
+
+// Calendar arithmetic uses civil dates, independent of the device timezone.
+export function addMonthsCivil(date: CivilDate, months: number): CivilDate {
+  const [year, month, day] = date.split('-').map(Number);
+  const target = new Date(Date.UTC(year, month - 1 + months, 1));
+  const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  target.setUTCDate(Math.min(day, lastDay));
+  return target.toISOString().slice(0, 10);
+}
+
+export function getMonthDays(date: CivilDate): CivilDate[] {
+  const first = `${date.slice(0, 7)}-01`;
+  const next = addMonthsCivil(first, 1);
+  const start = getStartOfWeekCivil(first);
+  const last = addDaysCivil(getStartOfWeekCivil(addDaysCivil(next, -1)), 6);
+  const days: CivilDate[] = [];
+  for (let day = start; day <= last; day = addDaysCivil(day, 1)) days.push(day);
+  return days;
+}
+
+// The existing API accepts a maximum of 35 days per request.
+export function getMonthlyRanges(date: CivilDate): { startAt: string; endAt: string }[] {
+  const days = getMonthDays(date);
+  return [days.slice(0, 35), days.slice(35)].filter(chunk => chunk.length).map(chunk => ({
+    startAt: civilDateToUtcMidnight(chunk[0]).toISOString(),
+    endAt: civilDateToUtcMidnight(addDaysCivil(chunk[chunk.length - 1], 1)).toISOString(),
+  }));
+}
+
+export function formatMonthCivil(date: CivilDate): string {
+  return createFormatter({ month: 'long', year: 'numeric' }).format(civilDateToUtcMidnight(date));
+}
+
+export function formatCalendarDate(date: CivilDate): string {
+  return createFormatter({ day: 'numeric', month: 'short', year: 'numeric' }).format(civilDateToUtcMidnight(date));
 }

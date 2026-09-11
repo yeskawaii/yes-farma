@@ -12,7 +12,7 @@ interface DailyViewProps {
 
 export function DailyView({ date, appointments, onSelectAppointment }: DailyViewProps) {
   // Filter appointments for this specific day using civil date equality
-  const dailyAppointments = appointments.filter(app => getCivilDate(app.startAt) === date);
+  const dailyAppointments = appointments.filter(app => getCivilDate(app.startAt) === date).sort((a, b) => a.startAt.localeCompare(b.startAt));
 
   return (
     <div className="flex flex-col gap-4">
@@ -21,13 +21,13 @@ export function DailyView({ date, appointments, onSelectAppointment }: DailyView
           <div className="w-16 h-16 bg-slate-50 text-slate-300 rounded-full flex items-center justify-center mb-3">
             <CalendarX2 size={32} />
           </div>
-          <h3 className="text-slate-900 font-bold text-lg">Día libre</h3>
+          <h3 className="text-slate-900 font-bold text-lg">Sin citas para mostrar</h3>
           <p className="text-slate-500 max-w-sm mt-1">
-            No hay citas programadas para este día.
+            No hay citas para este día con los filtros actuales.
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div className="flex flex-col gap-2">
           {dailyAppointments.map(app => (
             <AppointmentCard
               key={app.id}

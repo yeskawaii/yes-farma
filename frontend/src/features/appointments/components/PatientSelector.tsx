@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useId } from 'react';
 import { patientsApi } from '../../patients/api';
 import type { PatientListItem } from '../../patients/types';
 
@@ -10,6 +10,8 @@ interface PatientSelectorProps {
 }
 
 export function PatientSelector({ value, onChange, disabled, initialPatient }: PatientSelectorProps) {
+  const inputId = useId();
+  const [searchError, setSearchError] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [patients, setPatients] = useState<PatientListItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -18,22 +20,18 @@ export function PatientSelector({ value, onChange, disabled, initialPatient }: P
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const delayDebounceFn = setTimeout(() => {
-      if (searchTerm.trim() === '') {
-        setPatients([]);
-        return;
-      }
-
-      setLoading(true);
+    let cancelled = false;
+    setPatients([]);
+    setSearchError(false);
+    setLoading(Boolean(searchTerm.trim()));
+    const timer = setTimeout(() => {
+      if (!searchTerm.trim()) return;
       patientsApi.list({ q: searchTerm, status: 'ACTIVE', page: 1, pageSize: 10 })
-        .then(res => {
-          setPatients(res.items);
-        })
-        .catch(err => console.error(err))
-        .finally(() => setLoading(false));
+        .then(res => { if (!cancelled) setPatients(res.items); })
+        .catch(() => { if (!cancelled) setSearchError(true); })
+        .finally(() => { if (!cancelled) setLoading(false); });
     }, 300);
-
-    return () => clearTimeout(delayDebounceFn);
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [searchTerm]);
 
   useEffect(() => {
@@ -48,18 +46,18 @@ export function PatientSelector({ value, onChange, disabled, initialPatient }: P
 
   return (
     <div className="relative" ref={wrapperRef}>
-      <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor="patient-selector">
+      <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor={inputId}>
         Paciente
       </label>
       {selectedPatient && value ? (
-        <div className="flex items-center justify-between p-2 border rounded bg-gray-50">
+        <div className="flex items-center justify-between gap-3 p-3 border border-blue-200 rounded-lg bg-blue-50">
           <span className="truncate">
             {selectedPatient.firstName} {selectedPatient.lastName} {selectedPatient.secondLastName || ''}
           </span>
           {!disabled && (
             <button
               type="button"
-              className="text-sm text-red-500 hover:text-red-700 focus:outline-none"
+              className="shrink-0 text-sm font-medium text-blue-600 hover:text-blue-800"
               onClick={() => {
                 onChange('');
                 setSelectedPatient(null);
@@ -73,9 +71,9 @@ export function PatientSelector({ value, onChange, disabled, initialPatient }: P
       ) : (
         <div>
           <input
-            id="patient-selector"
+            id={inputId}
             type="text"
-            className="w-full border rounded p-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-500"
             placeholder="Buscar paciente por nombre..."
             value={searchTerm}
             onChange={(e) => {
@@ -90,6 +88,8 @@ export function PatientSelector({ value, onChange, disabled, initialPatient }: P
             <div className="absolute z-10 w-full mt-1 bg-white border rounded shadow-lg max-h-60 overflow-y-auto">
               {loading ? (
                 <div className="p-2 text-sm text-gray-500 text-center">Buscando...</div>
+              ) : searchError ? (
+                <div role="alert" className="p-3 text-sm text-red-600">No se pudo buscar. Intenta escribir el nombre de nuevo.</div>
               ) : patients.length > 0 ? (
                 patients.map(p => (
                   <button

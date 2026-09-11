@@ -1,5 +1,6 @@
-import type { AppointmentListItem, AppointmentStatus } from '../types';
+import type { AppointmentListItem } from '../types';
 import { formatTime } from '../utils/date';
+import { appointmentStatusMap } from '../utils/status';
 import { Clock } from 'lucide-react';
 
 interface AppointmentCardProps {
@@ -9,26 +10,18 @@ interface AppointmentCardProps {
   compact?: boolean;
 }
 
-const statusMap: Record<AppointmentStatus, { label: string, color: string, dot: string }> = {
-  SCHEDULED: { label: 'Programada', color: 'bg-blue-50 border-blue-200 hover:border-blue-300', dot: 'bg-blue-500' },
-  CONFIRMED: { label: 'Confirmada', color: 'bg-indigo-50 border-indigo-200 hover:border-indigo-300', dot: 'bg-indigo-500' },
-  IN_PROGRESS: { label: 'En atención', color: 'bg-amber-50 border-amber-200 hover:border-amber-300', dot: 'bg-amber-500' },
-  COMPLETED: { label: 'Completada', color: 'bg-emerald-50 border-emerald-200 hover:border-emerald-300', dot: 'bg-emerald-500' },
-  CANCELLED: { label: 'Cancelada', color: 'bg-slate-50 border-slate-200 hover:border-slate-300 opacity-60', dot: 'bg-slate-400' },
-  NO_SHOW: { label: 'No asistió', color: 'bg-slate-50 border-slate-200 hover:border-slate-300 opacity-60', dot: 'bg-slate-400' }
-};
 
 export function AppointmentCard({ appointment, onClick, className = '', compact = false }: AppointmentCardProps) {
-  const { color, dot, label } = statusMap[appointment.status];
+  const { color, dot, label } = appointmentStatusMap[appointment.status];
 
   return (
     <button
       type="button"
       onClick={() => onClick(appointment.id)}
-      className={`border rounded-lg p-3 text-left cursor-pointer transition-all active:scale-[0.98] ${color} ${className} w-full focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-0 max-w-full overflow-hidden whitespace-normal break-normal`}
-      aria-label={`Cita ${label} de ${formatTime(appointment.startAt)} a ${formatTime(appointment.endAt)}`}
+      className={`border rounded-lg p-3 text-left cursor-pointer transition-all active:scale-[0.98] ${color} ${className} ${compact ? '' : 'sm:flex sm:items-center sm:gap-6'} w-full focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-0 max-w-full overflow-hidden whitespace-normal break-normal`}
+      aria-label={`${appointment.patient.firstName} ${appointment.patient.lastName}, cita ${label} de ${formatTime(appointment.startAt)} a ${formatTime(appointment.endAt)}`}
     >
-      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 mb-2">
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 mb-2 sm:mb-0">
         {compact ? (
           <div className="flex flex-col text-slate-600 font-medium text-xs min-w-0 shrink-0 leading-tight">
             <div className="flex items-center gap-1.5 whitespace-nowrap">
@@ -51,7 +44,7 @@ export function AppointmentCard({ appointment, onClick, className = '', compact 
         </div>
       </div>
 
-      <div className="flex flex-col gap-1">
+      <div className={`flex min-w-0 flex-1 flex-col gap-1 ${compact ? '' : 'sm:grid sm:grid-cols-3 sm:items-center sm:gap-4'}`}>
         <h4 className="font-semibold text-slate-900 text-sm truncate">
           {appointment.patient.firstName} {appointment.patient.lastName} {appointment.patient.secondLastName || ''}
         </h4>

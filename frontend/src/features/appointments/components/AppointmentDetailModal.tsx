@@ -3,7 +3,8 @@ import { X, Clock, User, Stethoscope, FileText, AlertCircle, RefreshCw, Edit, Ch
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { appointmentsApi, getAppointmentErrorMessage } from '../api';
-import type { AppointmentDetail, AppointmentStatus, UpdateAppointmentStatusInput } from '../types';
+import type { AppointmentDetail, UpdateAppointmentStatusInput } from '../types';
+import { appointmentStatusMap } from '../utils/status';
 import { formatTime, formatDate } from '../utils/date';
 import { useAuth } from '../../../core/auth/AuthProvider';
 import { AppointmentFormModal } from './AppointmentFormModal';
@@ -16,14 +17,6 @@ interface AppointmentDetailModalProps {
   onSuccess: () => void; // Trigger list refresh
 }
 
-const statusMap: Record<AppointmentStatus, { label: string, color: string }> = {
-  SCHEDULED: { label: 'Programada', color: 'bg-blue-100 text-blue-700 border-blue-200' },
-  CONFIRMED: { label: 'Confirmada', color: 'bg-indigo-100 text-indigo-700 border-indigo-200' },
-  IN_PROGRESS: { label: 'En atención', color: 'bg-amber-100 text-amber-700 border-amber-200' },
-  COMPLETED: { label: 'Completada', color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
-  CANCELLED: { label: 'Cancelada', color: 'bg-red-100 text-red-700 border-red-200' },
-  NO_SHOW: { label: 'No asistió', color: 'bg-slate-100 text-slate-700 border-slate-200' }
-};
 
 export function AppointmentDetailModal({ id, onClose, onSuccess }: AppointmentDetailModalProps) {
   const navigate = useNavigate();
@@ -160,11 +153,11 @@ export function AppointmentDetailModal({ id, onClose, onSuccess }: AppointmentDe
   return (
     <>
       <Modal onClose={onClose} closeOnBackdrop={false} aria-label="Detalle de cita">
-        <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto flex flex-col relative animate-slide-up">
+        <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl max-h-[calc(100dvh-2rem)] overflow-hidden flex flex-col relative animate-slide-up">
           {/* Header */}
-          <div className="sticky top-0 bg-white border-b border-slate-100 p-4 flex items-center justify-between z-10 rounded-t-2xl">
+          <div className="shrink-0 bg-white border-b border-slate-100 p-4 flex items-center justify-between z-10 rounded-t-2xl">
             <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-              Detalle de Cita
+              Detalle de cita
             </h2>
             <button
               onClick={onClose}
@@ -176,7 +169,7 @@ export function AppointmentDetailModal({ id, onClose, onSuccess }: AppointmentDe
           </div>
 
           {/* Content */}
-          <div className="p-6">
+          <div className="overflow-y-auto p-5">
             {loading ? (
               <div className="flex flex-col gap-4 animate-pulse">
                 <div className="h-6 w-1/3 bg-slate-200 rounded"></div>
@@ -193,90 +186,7 @@ export function AppointmentDetailModal({ id, onClose, onSuccess }: AppointmentDe
                 </button>
               </div>
             ) : detail ? (
-              <div className="flex flex-col gap-6">
-
-                {/* Status Badge */}
-                <div className="flex items-center justify-between">
-                  <span className={`px-3 py-1 text-sm font-semibold rounded-full border ${statusMap[detail.status].color}`}>
-                    {statusMap[detail.status].label}
-                  </span>
-                  <div className="text-right">
-                    <p className="text-sm text-slate-500">Fecha</p>
-                    <p className="font-medium text-slate-900 capitalize">{formatDate(detail.startAt)}</p>
-                  </div>
-                </div>
-
-                {/* Actions */}
-                {careError && (
-                  <div className="flex items-start gap-2 p-3 bg-red-50 text-red-700 border border-red-200 rounded-lg text-sm">
-                    <AlertCircle
-                      size={16}
-                      className="shrink-0 mt-0.5"
-                    />
-                    <span>{careError}</span>
-                  </div>
-                )}
-
-                <div className="flex flex-wrap gap-2">
-                  {canEdit && (
-                    <button onClick={() => setIsEditOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-200 transition-colors">
-                      <Edit size={16} /> Editar
-                    </button>
-                  )}
-                  {canConfirm && (
-                    <button onClick={() => setStatusConfirm({ open: true, status: 'CONFIRMED' })} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg border border-blue-200 transition-colors">
-                      <Check size={16} /> Confirmar
-                    </button>
-                  )}
-                  {careAction && (
-                    <button
-                      onClick={() => void handleOpenCare()}
-                      disabled={isOpeningCare}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
-                        careAction === 'VIEW'
-                          ? 'text-blue-700 bg-blue-50 hover:bg-blue-100 border-blue-200'
-                          : 'text-amber-700 bg-amber-50 hover:bg-amber-100 border-amber-200'
-                      }`}
-                    >
-                      {isOpeningCare ? (
-                        <Loader2 size={16} className="animate-spin" />
-                      ) : careAction === 'VIEW' ? (
-                        <Eye size={16} />
-                      ) : (
-                        <Play size={16} />
-                      )}
-
-                      {isOpeningCare
-                        ? 'Abriendo...'
-                        : careAction === 'START'
-                          ? 'Iniciar atención'
-                          : careAction === 'CONTINUE'
-                            ? 'Continuar atención'
-                            : 'Ver atención'}
-                    </button>
-                  )}
-                  {canNoShow && (
-                    <button onClick={() => setStatusConfirm({ open: true, status: 'NO_SHOW' })} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-700 bg-slate-50 hover:bg-slate-200 rounded-lg border border-slate-300 transition-colors">
-                      <UserX size={16} /> No asistió
-                    </button>
-                  )}
-                  {canCancel && (
-                    <button onClick={() => setIsCancelOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-700 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition-colors ml-auto">
-                      <Ban size={16} /> Cancelar cita
-                    </button>
-                  )}
-                </div>
-
-                {/* Time */}
-                <div className="flex items-start gap-3 bg-blue-50/50 p-4 rounded-xl border border-blue-100">
-                  <Clock className="text-blue-500 mt-0.5 shrink-0" size={20} />
-                  <div>
-                    <p className="text-xs text-blue-600 font-bold uppercase tracking-wider mb-0.5">Horario</p>
-                    <p className="font-semibold text-slate-900 text-lg">
-                      {formatTime(detail.startAt)} - {formatTime(detail.endAt)}
-                    </p>
-                  </div>
-                </div>
+              <div className="flex flex-col gap-4">
 
                 {/* Patient */}
                 <div className="flex items-start gap-3">
@@ -285,14 +195,37 @@ export function AppointmentDetailModal({ id, onClose, onSuccess }: AppointmentDe
                   </div>
                   <div>
                     <p className="text-xs text-slate-500 font-medium mb-0.5">Paciente</p>
-                    <p className="font-semibold text-slate-900">
+                    <p className="text-lg font-semibold text-slate-900">
                       {detail.patient.firstName} {detail.patient.lastName} {detail.patient.secondLastName || ''}
                     </p>
                     {(detail.patient.phone || detail.patient.email) && (
-                      <p className="text-sm text-slate-500 mt-0.5">
+                      <p className="text-sm text-slate-500 mt-0.5 break-all">
                         {detail.patient.phone} {detail.patient.phone && detail.patient.email && '•'} {detail.patient.email}
                       </p>
                     )}
+                  </div>
+                </div>
+
+                {/* Status Badge */}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className={`px-3 py-1 text-sm font-semibold rounded-full border ${appointmentStatusMap[detail.status].color}`}>
+                    {appointmentStatusMap[detail.status].label}
+                  </span>
+                  <div className="text-right">
+                    <p className="text-sm text-slate-500">Fecha</p>
+                    <p className="font-medium text-slate-900 capitalize">{formatDate(detail.startAt)}</p>
+                  </div>
+                </div>
+
+                {/* Time */}
+                <div className="flex items-start gap-3 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                  <Clock className="text-blue-500 mt-0.5 shrink-0" size={20} />
+                  <div>
+                    <p className="text-xs text-blue-600 font-bold uppercase tracking-wider mb-0.5">Horario</p>
+                    <p className="font-semibold text-slate-900 text-lg">
+                      {formatTime(detail.startAt)} – {formatTime(detail.endAt)}
+                      <span className="ml-2 text-sm font-normal text-slate-500">{Math.round((new Date(detail.endAt).getTime() - new Date(detail.startAt).getTime()) / 60000)} min</span>
+                    </p>
                   </div>
                 </div>
 
@@ -318,18 +251,18 @@ export function AppointmentDetailModal({ id, onClose, onSuccess }: AppointmentDe
                     <FileText className="text-slate-400 mt-0.5 shrink-0" size={20} />
                     <div>
                       <p className="text-xs text-slate-500 font-medium mb-0.5">Motivo de consulta</p>
-                      <p className="text-sm text-slate-900 whitespace-pre-wrap">{detail.reason}</p>
+                      <p className="text-sm text-slate-900 whitespace-pre-wrap break-words">{detail.reason}</p>
                     </div>
                   </div>
                 )}
 
                 {/* Admin Notes */}
                 {detail.administrativeNotes && (
-                  <div className="flex items-start gap-3 bg-amber-50 p-4 rounded-xl border border-amber-100">
+                  <div className="flex items-start gap-3 bg-slate-50 p-3 rounded-lg border border-slate-200">
                     <FileText className="text-amber-500 mt-0.5 shrink-0" size={20} />
                     <div>
-                      <p className="text-xs text-amber-700 font-medium mb-0.5">Notas Administrativas</p>
-                      <p className="text-sm text-amber-900 whitespace-pre-wrap">{detail.administrativeNotes}</p>
+                      <p className="text-xs text-slate-500 font-medium mb-0.5">Notas administrativas</p>
+                      <p className="text-sm text-slate-900 whitespace-pre-wrap break-words">{detail.administrativeNotes}</p>
                     </div>
                   </div>
                 )}
@@ -344,6 +277,68 @@ export function AppointmentDetailModal({ id, onClose, onSuccess }: AppointmentDe
                     </div>
                   </div>
                 )}
+
+                {/* Actions */}
+                {careError && (
+                  <div className="flex items-start gap-2 p-3 bg-red-50 text-red-700 border border-red-200 rounded-lg text-sm">
+                    <AlertCircle
+                      size={16}
+                      className="shrink-0 mt-0.5"
+                    />
+                    <span>{careError}</span>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap gap-2 border-t border-slate-200 pt-4">
+                  {canEdit && (
+                    <button onClick={() => setIsEditOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-200 transition-colors">
+                      <Edit size={16} /> Editar
+                    </button>
+                  )}
+                  {canConfirm && (
+                    <button onClick={() => setStatusConfirm({ open: true, status: 'CONFIRMED' })} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg border border-blue-200 transition-colors">
+                      <Check size={16} /> Confirmar
+                    </button>
+                  )}
+                  {careAction && (
+                    <button
+                      onClick={() => void handleOpenCare()}
+                      disabled={isOpeningCare}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors disabled:opacity-60 disabled:cursor-not-allowed ${
+                        careAction === 'VIEW'
+                          ? 'text-blue-700 bg-blue-50 hover:bg-blue-100 border-blue-200'
+                          : 'text-white bg-blue-600 hover:bg-blue-700 border-blue-600'
+                      }`}
+                    >
+                      {isOpeningCare ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : careAction === 'VIEW' ? (
+                        <Eye size={16} />
+                      ) : (
+                        <Play size={16} />
+                      )}
+
+                      {isOpeningCare
+                        ? 'Abriendo...'
+                        : careAction === 'START'
+                          ? 'Iniciar atención'
+                          : careAction === 'CONTINUE'
+                            ? 'Continuar atención'
+                            : 'Ver atención'}
+                    </button>
+                  )}
+                  {canNoShow && (
+                    <button onClick={() => setStatusConfirm({ open: true, status: 'NO_SHOW' })} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-700 bg-slate-50 hover:bg-slate-200 rounded-lg border border-slate-300 transition-colors">
+                      <UserX size={16} /> No asistió
+                    </button>
+                  )}
+                  {canCancel && (
+                    <button onClick={() => setIsCancelOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-600 bg-white hover:bg-red-50 rounded-lg border border-red-200 transition-colors ml-auto">
+                      <Ban size={16} /> Cancelar cita
+                    </button>
+                  )}
+                </div>
+
 
               </div>
             ) : null}

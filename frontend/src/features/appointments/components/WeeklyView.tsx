@@ -19,10 +19,10 @@ export function WeeklyView({ startDate, appointments, onSelectAppointment }: Wee
         Use a horizontal scrollable container on mobile.
         On desktop, it uses CSS Grid with 7 columns.
       */}
-      <div className="overflow-x-auto min-h-[500px]">
+      <div className="overflow-x-auto min-h-[360px]">
         <div className="min-w-[900px] grid grid-cols-7 divide-x divide-slate-100">
           {days.map((day, index) => {
-            const dayAppointments = appointments.filter(app => getCivilDate(app.startAt) === day);
+            const dayAppointments = appointments.filter(app => getCivilDate(app.startAt) === day).sort((a, b) => a.startAt.localeCompare(b.startAt));
             const isToday = day === today;
             const midnight = civilDateToUtcMidnight(day);
 
