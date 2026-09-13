@@ -8,11 +8,20 @@ async function bootstrap() {
   const firstName = process.env.BOOTSTRAP_OWNER_FIRST_NAME;
   const lastName = process.env.BOOTSTRAP_OWNER_LAST_NAME;
   const clinicName = process.env.BOOTSTRAP_CLINIC_NAME;
+  const clinicalSpecialty = process.env.BOOTSTRAP_CLINICAL_SPECIALTY ?? 'DENTISTRY';
   const specialtyCode = process.env.BOOTSTRAP_SPECIALTY_CODE || 'DENTISTRY';
   const license = process.env.BOOTSTRAP_PROFESSIONAL_LICENSE || null;
+  const specialtyLicense = process.env.BOOTSTRAP_SPECIALTY_LICENSE || null;
+  const professionalAddress = process.env.BOOTSTRAP_PROFESSIONAL_ADDRESS || null;
+  const professionalPhone = process.env.BOOTSTRAP_PROFESSIONAL_PHONE || null;
 
   if (!email || !password || !firstName || !lastName || !clinicName) {
     console.error('Faltan variables de entorno requeridas para el bootstrap.');
+    process.exit(1);
+  }
+
+  if (clinicalSpecialty !== 'DENTISTRY' && clinicalSpecialty !== 'PEDIATRICS') {
+    console.error('BOOTSTRAP_CLINICAL_SPECIALTY debe ser DENTISTRY o PEDIATRICS.');
     process.exit(1);
   }
 
@@ -27,7 +36,7 @@ async function bootstrap() {
   try {
     await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const clinic = await tx.clinic.create({
-        data: { name: clinicName },
+        data: { name: clinicName, clinicalSpecialty },
       });
 
       const user = await tx.user.create({
@@ -52,10 +61,19 @@ async function bootstrap() {
           membershipId: membership.id,
           specialtyCode,
           professionalLicense: license,
+          specialtyLicense,
+          professionalAddress,
+          professionalPhone,
         },
       });
-
-      console.log('✅ Owner, clínica y membresía creados exitosamente.');
+    });
+    console.log('✅ Owner, clínica y membresía creados exitosamente.', {
+      email,
+      clinic: clinicName,
+      clinicalSpecialty,
+      role: 'OWNER',
+      specialtyCode,
+      professionalLicense: license,
     });
   } catch (err) {
     console.error('Error durante el bootstrap:', err);
