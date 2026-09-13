@@ -8,7 +8,7 @@ const specialties: Record<string, string> = {
   PEDIATRIC_DENTISTRY: 'Odontopediatría', ORAL_SURGERY: 'Cirugía oral',
   PROSTHODONTICS: 'Prostodoncia',
 };
-const specialtyLabel = (value: string) => specialties[value.trim().toUpperCase()] ?? value;
+const specialtyLabel = (value?: string | null) => specialties[value?.trim().toUpperCase() ?? ''] ?? value?.trim() ?? '';
 const sentencePart = (value: string) => value.trim().replace(/[.,;]+$/, '').replace(/^(\p{Lu})(?=\p{Ll})/u, c => c.toLocaleLowerCase('es-MX'));
 const printDirections = (i: PrescriptionItem) => {
   const route = sentencePart(i.route).replace(/^oral$/i, 'oral');
@@ -21,6 +21,9 @@ export function prescriptionPrintHtml(r: Prescription) {
   if (!s || r.status === 'DRAFT') throw new Error('Solo las recetas emitidas tienen un documento imprimible.');
   const p = s.professional;
   const specialty = specialtyLabel(p.specialty);
+  // Legacy snapshots used the dental title. Never infer their context from today's clinic or professional.
+  const documentSpecialty = s.clinic.clinicalSpecialty ?? 'DENTISTRY';
+  const title = documentSpecialty === 'PEDIATRICS' ? 'RECETA PEDIÁTRICA' : 'RECETA ODONTOLÓGICA';
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Receta ${escape(s.folio)}</title><style>
   *{box-sizing:border-box}body{font:10.5pt Arial,sans-serif;line-height:1.4;color:#222;margin:0;padding:24px;overflow-wrap:anywhere}main{max-width:186mm;margin:auto}
   header{display:flex;justify-content:space-between;gap:8mm;border-bottom:2px solid #333;padding-bottom:4mm;break-inside:avoid}.clinic{flex:1;min-width:0}.document{flex:0 0 76mm;text-align:right}
@@ -35,7 +38,7 @@ export function prescriptionPrintHtml(r: Prescription) {
   @media print{body{padding:0}.controls{display:none}main{max-width:none}.void-watermark{display:block;position:fixed;top:45%;left:0;width:100%;text-align:center;transform:rotate(-28deg);font-size:42pt;font-weight:bold;opacity:.16;z-index:10;pointer-events:none}}
   </style></head><body><main>
   <div class="controls"><button onclick="window.print()">Imprimir / guardar como PDF</button><p>Selecciona papel Carta y escala 100 %. Para descargar, elige «Guardar como PDF». Desactiva «Encabezados y pies de página» del navegador para omitir fecha/hora, URL y número de página.</p></div>
-  <header><div class="clinic"><h1>${escape(s.clinic.name)}</h1><p class="contact">${escape(p.address)}</p>${p.phone ? `<p class="contact">Tel. ${escape(p.phone)}</p>` : ''}</div><div class="document"><h2>RECETA ODONTOLÓGICA</h2><p class="date">Fecha: ${escape(new Date(s.issuedAt).toLocaleDateString('es-MX', { timeZone: s.clinic.timeZone }))}</p><div class="folio"><span class="label">FOLIO</span><br><span class="folio-value">${escape(s.folio)}</span></div></div></header>
+  <header><div class="clinic"><h1>${escape(s.clinic.name)}</h1><p class="contact">${escape(p.address)}</p>${p.phone ? `<p class="contact">Tel. ${escape(p.phone)}</p>` : ''}</div><div class="document"><h2>${escape(title)}</h2><p class="date">Fecha: ${escape(new Date(s.issuedAt).toLocaleDateString('es-MX', { timeZone: s.clinic.timeZone }))}</p><div class="folio"><span class="label">FOLIO</span><br><span class="folio-value">${escape(s.folio)}</span></div></div></header>
   ${r.status === 'CANCELLED' ? `<div class="void-watermark">RECETA ANULADA</div><div class="cancellation"><div class="cancelled">RECETA ANULADA</div><p>Motivo: ${escape(r.cancellationReason)}</p><p>Anulada: ${escape(new Date(r.cancelledAt!).toLocaleDateString('es-MX', { timeZone: s.clinic.timeZone }))}</p></div>` : ''}
   <section class="details"><div class="patient"><div><span class="label">PACIENTE</span><p class="patient-name">${escape(s.patient.name)}</p></div><div class="birth"><span class="label">FECHA DE NACIMIENTO</span><p>${escape(s.patient.birthDate.split('-').reverse().join('/'))}</p></div></div>
   <div class="professional"><p><span class="professional-name">${escape(p.name)}</span>${specialty ? ` · ${escape(specialty)}` : ''}</p><p class="credentials">Cédula profesional: ${escape(p.license)}${p.specialtyLicense ? ` · Cédula de especialidad: ${escape(p.specialtyLicense)}` : ''}</p></div></section>

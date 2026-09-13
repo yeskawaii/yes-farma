@@ -1,6 +1,6 @@
 export interface PrescriptionItem { medication: string; brand: string; concentration: string; form: string; dose: string; route: string; frequency: string; duration: string; quantity: string; instructions: string }
 export interface PrescriptionSnapshot {
-  clinic: { name: string; timeZone: string }; patient: { name: string; birthDate: string };
+  clinic: { name: string; timeZone: string; clinicalSpecialty?: 'DENTISTRY' | 'PEDIATRICS' }; patient: { name: string; birthDate: string };
   professional: { name: string; license: string; specialty: string; specialtyLicense: string | null; address: string; phone: string | null };
   items: PrescriptionItem[]; generalInstructions: string; folio: string; issuedAt: string;
 }
