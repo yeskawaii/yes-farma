@@ -49,6 +49,9 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
       throw new AppError('MEMBERSHIP_DISABLED', 'Membresía inactiva en esta clínica.', 403);
     }
 
+    const clinic = await prisma.clinic.findUnique({ where: { id: session.activeClinicId } });
+    if (!clinic || clinic.status !== 'ACTIVE') throw new AppError('CLINIC_DISABLED', 'Clínica inactiva.', 403);
+
     // Rate-limited updates to lastSeenAt (e.g. max once per 5 minutes)
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
     if (session.lastSeenAt < fiveMinutesAgo) {

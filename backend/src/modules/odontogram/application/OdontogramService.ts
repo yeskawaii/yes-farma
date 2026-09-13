@@ -1,3 +1,4 @@
+import { specialtiesWithCapability } from '../../clinic-configuration/capabilities';
 import type { Prisma, DentalFinding, ToothAssessment, AuditEvent, OdontogramBatchRequest } from '../../../generated/prisma';
 import { Prisma as PrismaNamespace } from '../../../generated/prisma';
 import { AppError } from '../../../shared/errors/AppError';
@@ -347,7 +348,7 @@ export class OdontogramService {
     membershipId: string
   ) {
     const membership = await tx.membership.findFirst({
-      where: { id: membershipId, clinicId },
+      where: { id: membershipId, clinicId, clinic: { status: 'ACTIVE', clinicalSpecialty: { in: specialtiesWithCapability('odontogram') } } },
       include: {
         profile: true,
         user: { select: { id: true, firstName: true, lastName: true, email: true } }

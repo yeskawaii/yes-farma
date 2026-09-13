@@ -117,6 +117,9 @@ export function PatientEdit() {
     phone: patient.phone || '',
     email: patient.email || '',
     administrativeNotes: patient.administrativeNotes || '',
+    guardianName: patient.guardianName || '',
+    guardianPhone: patient.guardianPhone || '',
+    guardianRelationship: patient.guardianRelationship || '',
   };
 
   // Ensure date format is YYYY-MM-DD for input type="date"

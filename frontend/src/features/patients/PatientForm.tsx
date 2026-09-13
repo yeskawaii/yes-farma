@@ -24,6 +24,9 @@ export function PatientForm({ initialData, onSubmit, loading, error, onCancel, t
     phone: initialData?.phone || '',
     email: initialData?.email || '',
     administrativeNotes: initialData?.administrativeNotes || '',
+    guardianName: initialData?.guardianName || '',
+    guardianPhone: initialData?.guardianPhone || '',
+    guardianRelationship: initialData?.guardianRelationship || '',
   });
 
   const [errors, setErrors] = useState<Partial<Record<keyof PatientFormInput, string>>>({});
@@ -246,6 +249,9 @@ export function PatientForm({ initialData, onSubmit, loading, error, onCancel, t
           <h2 className="text-lg font-bold text-slate-900 border-b border-slate-100 pb-2">Información Adicional</h2>
           
           <div className="flex flex-col gap-1.5">
+            <fieldset className="space-y-3 mb-6"><legend className="font-semibold">Responsable / contacto del paciente (opcional)</legend>
+              {([['guardianName', 'Nombre del responsable', 200], ['guardianPhone', 'Teléfono del responsable', 50], ['guardianRelationship', 'Parentesco o relación', 100]] as const).map(([name, label, maxLength]) => <label className="block text-sm" key={name}>{label}<input className="block w-full border border-slate-300 rounded-lg p-3 mt-1" name={name} value={formData[name]} maxLength={maxLength} disabled={loading} onChange={handleChange} /></label>)}
+            </fieldset>
             <label htmlFor="administrativeNotes" className="text-sm font-semibold text-slate-700">Notas Administrativas</label>
             <p className="text-xs text-slate-500 mb-1">
               Útil para indicar preferencia de contacto, nombre del tutor, horario recomendado o indicaciones de recepción. La información clínica se registrará posteriormente en el expediente médico.

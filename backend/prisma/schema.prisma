@@ -12,6 +12,11 @@ enum UserStatus {
   DISABLED
 }
 
+enum ClinicalSpecialty {
+  DENTISTRY
+  PEDIATRICS
+}
+
 enum ClinicStatus {
   ACTIVE
   SUSPENDED
@@ -147,6 +152,7 @@ model Clinic {
   name     String
   timeZone String       @default("America/Mexico_City") @map("timezone")
   status   ClinicStatus @default(ACTIVE)
+  clinicalSpecialty ClinicalSpecialty @default(DENTISTRY)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -303,6 +309,9 @@ model Patient {
   sexAtBirth          SexAtBirth?
   phone               String?
   email               String?
+  guardianName        String?       @db.VarChar(200)
+  guardianPhone       String?       @db.VarChar(50)
+  guardianRelationship String?      @db.VarChar(100)
   administrativeNotes String?
   status              PatientStatus @default(ACTIVE)
 
@@ -464,7 +473,7 @@ model ClinicalVitalSigns {
   temperatureCelsius      Decimal? @db.Decimal(4, 1)
   oxygenSaturationPercent Int?
   weightKg                Decimal? @db.Decimal(6, 2)
-  heightCm                Int?
+  heightCm                Float?
   measuredAt              DateTime @default(now()) @db.Timestamptz(3)
   createdAt               DateTime @default(now()) @db.Timestamptz(3)
   updatedAt               DateTime @updatedAt @db.Timestamptz(3)

@@ -8,11 +8,12 @@ import { AuthContext } from '../../middlewares/auth';
 
 const ctx: AuthContext = { clinicId: randomUUID(), membershipId: randomUUID(), userId: randomUUID(), sessionId: randomUUID(), role: 'OWNER' };
 const patientId = randomUUID();
-function fixture() {
+function fixture(specialty: 'DENTISTRY' | 'PEDIATRICS' = 'DENTISTRY') {
   const rows: any[] = []; const budgets: any[] = []; const audits: any[] = [];
   let allowed = true; let active = true; let role = 'OWNER'; let profileActive = true;
   const matches = (r: any, where: any): boolean => Object.entries(where).every(([key, v]: [string, any]) => typeof v === 'object' && v !== null ? v.in ? v.in.includes(r[key]) : v.not ? r[key] !== v.not : true : r[key] === v);
   const tx: any = {
+    clinic: { findUniqueOrThrow: async () => ({ clinicalSpecialty: specialty }) },
     membership: { findFirst: async ({ where }: any) => allowed && where.clinicId === ctx.clinicId && where.id === ctx.membershipId && where.role.in.includes(role) && where.profile.active === profileActive ? { id: ctx.membershipId } : null },
     patient: { findFirst: async ({ where }: any) => where.clinicId === ctx.clinicId && where.id === patientId ? { id: patientId, status: active ? 'ACTIVE' : 'INACTIVE' } : null },
     auditEvent: { create: async ({ data }: any) => { audits.push(data); return data; } },
@@ -113,4 +114,24 @@ test('discount corrections preserve snapshot, identity, state and audit; reject 
   await assert.rejects(f.service.updateBudget(ctx, randomUUID(), b.id, { discount: '0', expectedVersion: 4 }), { code: 'NOT_FOUND' });
   f.deactivate();
   await assert.rejects(f.service.updateBudget(ctx, patientId, b.id, { discount: '0', expectedVersion: 4 }), { code: 'PATIENT_INACTIVE' });
+});
+
+test('Pediatrics keeps generic treatment and financial operations and rejects dental capture', async () => {
+  const f = fixture('PEDIATRICS');
+  await assert.rejects(f.service.saveTreatment(ctx, patientId, input), { code: 'CLINIC_CAPABILITY_DISABLED' });
+  assert.equal(f.rows.length, 0);
+  const treatment = await f.service.saveTreatment(ctx, patientId, { name: 'Consulta pediátrica', price: '500' });
+  assert.equal(treatment.toothNumber, null);
+  const budget = await f.service.createBudget(ctx, patientId, { treatmentIds: [treatment.id], discount: '50' });
+  assert.equal(budget.total, '450.00');
+});
+
+test('specialty change preserves historical dental associations while permitting generic treatment edits', async () => {
+  const f = fixture('PEDIATRICS');
+  const id = randomUUID();
+  f.rows.push({ id, clinicId: ctx.clinicId, patientId, version: 1, toothNumber: 16, surfaces: ['OCCLUSAL'], name: 'Registro previo', price: '100', status: 'PENDING' });
+  const updated = await f.service.saveTreatment(ctx, patientId, { ...input, name: 'Seguimiento', expectedVersion: 1 }, id);
+  assert.equal(updated.toothNumber, 16); assert.deepEqual(updated.surfaces, ['OCCLUSAL']);
+  await assert.rejects(f.service.saveTreatment(ctx, patientId, { ...input, toothNumber: null, surfaces: [], expectedVersion: 2 }, id), { code: 'CLINIC_CAPABILITY_DISABLED' });
+  await assert.rejects(f.service.saveTreatment(ctx, patientId, { ...input, toothNumber: 26, expectedVersion: 2 }, id), { code: 'CLINIC_CAPABILITY_DISABLED' });
 });

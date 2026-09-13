@@ -1,3 +1,4 @@
+import { capabilitiesFor, clinicalSpecialties } from '../../clinic-configuration/capabilities';
 import type { CookieOptions, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { AuthService } from '../application/AuthService';
@@ -135,6 +136,7 @@ export const authController = {
   },
 
   me: async (req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('Cache-Control', 'private, no-store');
     try {
       const ctx = (req as any).authContext;
       const user = await prisma.user.findUnique({
@@ -148,7 +150,7 @@ export const authController = {
       });
 
       const memberships = await prisma.membership.findMany({
-        where: { userId: ctx.userId, status: 'ACTIVE' },
+        where: { userId: ctx.userId, status: 'ACTIVE', clinic: { status: 'ACTIVE' } },
         include: { clinic: true, profile: true },
       });
 
@@ -158,9 +160,12 @@ export const authController = {
           id: m.id,
           clinicId: m.clinicId,
           clinicName: m.clinic.name,
+          clinicalSpecialty: m.clinic.clinicalSpecialty,
+          clinicCapabilities: capabilitiesFor(m.clinic.clinicalSpecialty),
           role: m.role,
           specialtyCode: m.profile?.specialtyCode,
         })),
+        clinicalSpecialties: Object.entries(clinicalSpecialties).map(([code, value]) => ({ code, label: value.label })),
         activeClinicId: ctx.clinicId,
         activeRole: ctx.role,
       });

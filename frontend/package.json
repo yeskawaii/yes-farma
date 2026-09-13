@@ -12,7 +12,8 @@
     "test:treatments": "node tests/treatment-plans/run.mjs",
     "test:inventory": "node tests/inventory/run.mjs",
     "review:inventory": "node tests/inventory/visual-review.mjs",
-    "test:prescriptions": "node tests/prescriptions/run.mjs"
+    "test:prescriptions": "node tests/prescriptions/run.mjs",
+    "test:specialties": "node tests/clinic-specialty/run.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",

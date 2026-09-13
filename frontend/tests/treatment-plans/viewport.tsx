@@ -1,3 +1,4 @@
+import { AuthProvider } from '../../src/core/auth/AuthProvider';
 import { budgetPrintHtml } from '../../src/features/treatment-plans/budgetPrint';
 import { createRoot } from 'react-dom/client';
 import { TreatmentPlanSection } from '../../src/features/treatment-plans/TreatmentPlanSection';
@@ -11,7 +12,8 @@ window.fetch = async (input, init) => {
   const path = String(input); const body = init?.body ? JSON.parse(String(init.body)) : undefined;
   requests.push({ path, body });
   let result: unknown;
-  if (path.endsWith('/cancel')) { Object.assign(payments[0], {status:'CANCELLED', cancellationReason:body.cancellationReason,cancelledAt:new Date().toISOString()}); budgets[0].paid='0.00';budgets[0].balance='100.05';budgets[0].financialStatus='UNPAID';result=payments[0]; }
+  if (path.endsWith('/auth/me')) result = { user: { id, firstName: 'Test', lastName: 'Professional' }, memberships: [{ id, clinicId: id, role: 'OWNER', clinicalSpecialty: 'DENTISTRY', clinicCapabilities: { odontogram: true, dentalClinicalTools: true } }], activeClinicId: id, activeRole: 'OWNER' };
+  else if (path.endsWith('/cancel')) { Object.assign(payments[0], {status:'CANCELLED', cancellationReason:body.cancellationReason,cancelledAt:new Date().toISOString()}); budgets[0].paid='0.00';budgets[0].balance='100.05';budgets[0].financialStatus='UNPAID';result=payments[0]; }
   else if (path.endsWith('/payments')) { if(body){payments.push({...body,id:String(payments.length),createdAt:new Date().toISOString(),status:'ACTIVE',createdBy:{user:{firstName:'Test',lastName:'Professional'}}});const paid=payments.filter(p=>p.status==='ACTIVE').reduce((s,p)=>s+Math.round(Number(p.amount)*100),0);Object.assign(budgets[0],{paid:(paid/100).toFixed(2),balance:((10005-paid)/100).toFixed(2),financialStatus:paid===10005?'PAID':'PARTIAL'});} result={...budgets[0],payments}; }
   else if (path.endsWith('/dental-procedures')) result = [{ id, name: 'Resina de catálogo', defaultPrice: '123.45', description: 'Descripción del catálogo', active: true, version: 1 }];
   else if (path.endsWith('/professionals')) result = [];
@@ -34,9 +36,9 @@ async function checkpoint(name: string) {
   if (review === name) { document.body.dataset.review = name; await new Promise(() => {}); }
 }
 async function run() {
-  if (review === 'empty') { root.render(<TreatmentPlanSection patientId={id} />); await tick(); await tick(); await checkpoint('empty'); }
+  if (review === 'empty') { root.render(<AuthProvider><TreatmentPlanSection patientId={id} /></AuthProvider>); await tick(); await tick(); await checkpoint('empty'); }
 
-  root.render(<TreatmentPlanSection patientId={id} initialTooth={16} />);
+  root.render(<AuthProvider><TreatmentPlanSection patientId={id} initialTooth={16} /></AuthProvider>);
   await tick(); await tick();
   let dialog = document.querySelector('[role="dialog"]')!;
   check(dialog, 'Abrir tratamiento desde pieza dental');

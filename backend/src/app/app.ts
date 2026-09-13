@@ -1,3 +1,4 @@
+import { clinicConfigurationRoutes } from '../modules/clinic-configuration/clinicConfigurationRoutes';
 import { createPrescriptionRoutes } from '../modules/prescriptions/prescriptionRoutes';
 import { createInventoryRoutes } from '../modules/inventory/infrastructure/inventoryRoutes';
 import { createTreatmentRoutes } from '../modules/treatment-plans/infrastructure/treatmentRoutes';
@@ -38,6 +39,7 @@ export const createApp = (composition: AppCompositionRoot = buildCompositionRoot
 
   // Routes
   app.use('/api/auth', authRoutes);
+  app.use('/api', clinicConfigurationRoutes);
   app.use('/api/prescriptions', createPrescriptionRoutes());
   app.use('/api/inventory', createInventoryRoutes());
   app.use('/api', createTreatmentRoutes());

@@ -150,6 +150,9 @@ export class PatientService {
           phone,
           email,
           administrativeNotes,
+          guardianName: this.normalizeString(input.guardianName),
+          guardianPhone: this.normalizeString(input.guardianPhone),
+          guardianRelationship: this.normalizeString(input.guardianRelationship),
           createdByMembershipId: membershipId,
           updatedByMembershipId: membershipId
         }
@@ -205,6 +208,9 @@ export class PatientService {
     if (input.sexAtBirth !== undefined) dataToUpdate.sexAtBirth = input.sexAtBirth || null;
     if (input.phone !== undefined) dataToUpdate.phone = this.normalizePhone(input.phone);
     if (input.email !== undefined) dataToUpdate.email = this.normalizeEmail(input.email);
+    for (const field of ['guardianName', 'guardianPhone', 'guardianRelationship'] as const) {
+      if (input[field] !== undefined) dataToUpdate[field] = this.normalizeString(input[field]);
+    }
     if (input.administrativeNotes !== undefined) dataToUpdate.administrativeNotes = this.normalizeString(input.administrativeNotes);
 
     if (Object.keys(dataToUpdate).length === 0) {

@@ -15,12 +15,12 @@ test('draft capture is structured, bounded and rejects privilege/association tam
   assert.equal(draftSchema.safeParse({ items: Array(31).fill(item) }).success, false);
 });
 const url = process.env.PRESCRIPTION_TEST_DATABASE_URL;
-test('PostgreSQL lifecycle, tenancy, concurrency, snapshot, constraints and atomic audit', { skip: !url }, async t => {
+for (const specialty of ['DENTISTRY', 'PEDIATRICS'] as const) test(`PostgreSQL ${specialty}: lifecycle, tenancy, concurrency, snapshot, constraints and atomic audit`, { skip: !url }, async t => {
   assert.match(url!, /127\.0\.0\.1:55439\/prescriptions_test$/);
   const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: url! }) });
   const service = new PrescriptionService(db);
   t.after(() => db.$disconnect());
-  const clinic = await db.clinic.create({ data: { name: 'Clínica original' } });
+  const clinic = await db.clinic.create({ data: { name: 'Clínica original', clinicalSpecialty: specialty } });
   const otherClinic = await db.clinic.create({ data: { name: 'Otra clínica' } });
   async function member(role: 'OWNER' | 'PROFESSIONAL' | 'ASSISTANT', clinicId = clinic.id) {
     const u = await db.user.create({ data: { firstName: 'Nombre', lastName: 'Profesional', email: `${randomUUID()}@example.test`, passwordHash: 'unused' } });
@@ -31,7 +31,7 @@ test('PostgreSQL lifecycle, tenancy, concurrency, snapshot, constraints and atom
   const patient = await db.patient.create({ data: { clinicId: clinic.id, firstName: 'Paciente', lastName: 'Original', birthDate: new Date('1990-01-02'), createdByMembershipId: owner.membershipId, updatedByMembershipId: owner.membershipId } });
   const patientB = await db.patient.create({ data: { clinicId: otherClinic.id, firstName: 'Paciente B', lastName: 'Original', birthDate: new Date('1990-01-02'), createdByMembershipId: foreign.membershipId, updatedByMembershipId: foreign.membershipId } });
   const input = { items: [item], generalInstructions: 'Indicaciones originales' };
-  const profile = { professionalLicense: 'TEST-123', specialtyCode: 'Odontología', specialtyLicense: '', professionalAddress: 'Consultorio de prueba', professionalPhone: '' };
+  const profile = { professionalLicense: 'TEST-123', specialtyCode: specialty, specialtyLicense: '', professionalAddress: 'Consultorio de prueba', professionalPhone: '' };
   let rx = await service.save(owner, patient.id, { items: [] });
   await t.test('draft creation and editing do not allocate folio; stale editing rejected', async () => {
     assert.equal(rx.folio, null); assert.equal(rx.status, 'DRAFT');

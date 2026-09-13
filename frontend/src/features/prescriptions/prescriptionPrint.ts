@@ -3,7 +3,7 @@ const escape = (v: unknown) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': 
 
 // Presentation only: never rewrite the issued snapshot or free-text instructions.
 const specialties: Record<string, string> = {
-  DENTISTRY: 'Odontología', DENTAL: 'Odontología', ODONT: 'Odontología',
+  PEDIATRICS: 'Pediatría', DENTISTRY: 'Odontología', DENTAL: 'Odontología', ODONT: 'Odontología',
   ORTHODONTICS: 'Ortodoncia', ENDODONTICS: 'Endodoncia', PERIODONTICS: 'Periodoncia',
   PEDIATRIC_DENTISTRY: 'Odontopediatría', ORAL_SURGERY: 'Cirugía oral',
   PROSTHODONTICS: 'Prostodoncia',
@@ -41,5 +41,5 @@ export function prescriptionPrintHtml(r: Prescription) {
   <div class="professional"><p><span class="professional-name">${escape(p.name)}</span>${specialty ? ` · ${escape(specialty)}` : ''}</p><p class="credentials">Cédula profesional: ${escape(p.license)}${p.specialtyLicense ? ` · Cédula de especialidad: ${escape(p.specialtyLicense)}` : ''}</p></div></section>
   <div class="medications">${s.items.map(i => `<section class="medication"><div class="rp">Rp.</div><div class="medication-body"><h3>${escape(i.medication.toUpperCase())} ${escape(i.concentration)}${i.brand ? ` (${escape(i.brand)})` : ''}</h3><p class="form">${escape(i.form)}</p><p class="directions"><strong>Modo de uso:</strong> ${escape(printDirections(i))}</p><p class="quantity"><strong>Cantidad:</strong> ${escape(i.quantity)}</p>${i.instructions ? `<p class="additional"><strong>Instrucciones adicionales:</strong> ${escape(i.instructions)}</p>` : ''}</div></section>`).join('')}</div>
   ${s.generalInstructions ? `<section class="general"><h3>INDICACIONES GENERALES</h3><p>${escape(s.generalInstructions)}</p></section>` : ''}
-  <div class="closing"><div class="signature"><hr><p class="signature-label">Firma del profesional</p><p class="signature-name">${escape(p.name)}</p>${specialty ? `<p>${escape(specialty)}</p>` : ''}<p class="credentials">Cédula profesional: ${escape(p.license)}</p>${p.specialtyLicense ? `<p class="credentials">Cédula de especialidad: ${escape(p.specialtyLicense)}</p>` : ''}</div><footer>Folio ${escape(s.folio)} · YESKIRA Dental${r.status === 'CANCELLED' ? ' · RECETA ANULADA' : ''}</footer></div></main></body></html>`;
+  <div class="closing"><div class="signature"><hr><p class="signature-label">Firma del profesional</p><p class="signature-name">${escape(p.name)}</p>${specialty ? `<p>${escape(specialty)}</p>` : ''}<p class="credentials">Cédula profesional: ${escape(p.license)}</p>${p.specialtyLicense ? `<p class="credentials">Cédula de especialidad: ${escape(p.specialtyLicense)}</p>` : ''}</div><footer>Folio ${escape(s.folio)} · YESKIRA${r.status === 'CANCELLED' ? ' · RECETA ANULADA' : ''}</footer></div></main></body></html>`;
 }

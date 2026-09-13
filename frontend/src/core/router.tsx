@@ -1,3 +1,4 @@
+import { ClinicSettings } from '../features/clinic-configuration/ClinicSettings';
 import { InventoryPage } from '../features/inventory/InventoryPage';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { MainLayout } from '../shared/components/Layout/MainLayout';
@@ -44,6 +45,7 @@ export const router = createBrowserRouter([
             path: '/',
             element: <Navigate to="/dashboard" replace />,
           },
+          { path: 'settings', element: <ClinicSettings /> },
           { path: 'inventory', element: <InventoryPage /> },
           { path: 'inventory/products/:id', element: <InventoryPage /> },
           {

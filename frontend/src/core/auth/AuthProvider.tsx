@@ -15,6 +15,8 @@ export interface Membership {
   clinicName: string;
   role: string;
   specialtyCode?: string;
+  clinicalSpecialty: 'DENTISTRY' | 'PEDIATRICS';
+  clinicCapabilities: Record<'odontogram' | 'dentalClinicalTools' | 'patients' | 'appointments' | 'encounters' | 'documents' | 'prescriptions' | 'treatmentPlans' | 'budgets' | 'payments' | 'inventory', boolean>;
 }
 
 export interface AuthState {
@@ -22,6 +24,7 @@ export interface AuthState {
   memberships: Membership[];
   activeClinicId: string | null;
   activeRole: string | null;
+  clinicalSpecialties?: { code: Membership['clinicalSpecialty']; label: string }[];
   status: 'loading' | 'authenticated' | 'unauthenticated';
 }
 
@@ -49,6 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         memberships: data.memberships,
         activeClinicId: data.activeClinicId,
         activeRole: data.activeRole,
+        clinicalSpecialties: data.clinicalSpecialties,
         status: 'authenticated',
       });
     } catch {
@@ -109,3 +113,9 @@ export const useAuth = () => {
   if (!ctx) throw new Error('useAuth must be used within AuthProvider');
   return ctx;
 };
+
+// Derive exclusively from the active clinic, including for assistants without a profile.
+export function useClinicCapabilities() {
+  const { memberships, activeClinicId } = useAuth();
+  return memberships.find(m => m.clinicId === activeClinicId)?.clinicCapabilities;
+}

@@ -16,6 +16,9 @@ export const createPatientSchema = z.object({
   sexAtBirth: z.enum(['FEMALE', 'MALE', 'INTERSEX', 'UNKNOWN']).optional(),
   phone: z.string().optional().or(z.literal('')),
   email: z.string().email().max(254).optional().or(z.literal('')),
+  guardianName: z.string().trim().max(200).optional().nullable(),
+  guardianPhone: z.string().trim().max(50).optional().nullable(),
+  guardianRelationship: z.string().trim().max(100).optional().nullable(),
   administrativeNotes: z.string().max(2000).optional().or(z.literal('')),
   confirmPossibleDuplicate: z.boolean().optional(),
 });
@@ -37,6 +40,9 @@ export const updatePatientSchema = z.object({
   sexAtBirth: z.enum(['FEMALE', 'MALE', 'INTERSEX', 'UNKNOWN']).optional().nullable(),
   phone: z.string().optional().nullable().or(z.literal('')),
   email: z.string().email().max(254).optional().nullable().or(z.literal('')),
+  guardianName: z.string().trim().max(200).optional().nullable(),
+  guardianPhone: z.string().trim().max(50).optional().nullable(),
+  guardianRelationship: z.string().trim().max(100).optional().nullable(),
   administrativeNotes: z.string().max(2000).optional().nullable().or(z.literal('')),
 }).refine(
   (data) => Object.keys(data).length > 0,

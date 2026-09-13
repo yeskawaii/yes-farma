@@ -1,3 +1,4 @@
+import { assertCapability, capabilitiesFor } from '../../clinic-configuration/capabilities';
 import { randomUUID } from 'node:crypto';
 import { Prisma, PrismaClient } from '../../../generated/prisma';
 import { AuthContext } from '../../../middlewares/auth';
@@ -59,6 +60,13 @@ export class TreatmentService {
       await this.access(tx, ctx, patientId, true);
       const previous = id ? await tx.patientTreatment.findFirst({ where: { id, clinicId: ctx.clinicId, patientId } }) : null;
       if (id && !previous) throw new AppError('NOT_FOUND', 'Tratamiento no encontrado.', 404);
+      // Historical dental associations survive a clinic specialty change; only a
+      // dental clinic can create, clear or alter those associations.
+      if (input.toothNumber !== (previous?.toothNumber ?? null) ||
+          JSON.stringify([...input.surfaces].sort()) !== JSON.stringify([...(previous?.surfaces ?? [])].sort())) {
+        const clinic = await tx.clinic.findUniqueOrThrow({ where: { id: ctx.clinicId } });
+        assertCapability(clinic.clinicalSpecialty, 'dentalClinicalTools');
+      }
       if (input.procedureId && input.procedureId !== previous?.procedureId) {
         if (!await tx.dentalProcedure.findFirst({ where: { id: input.procedureId, clinicId: ctx.clinicId, active: true } })) throw new AppError('VALIDATION_ERROR', 'Procedimiento inactivo o inexistente.', 400);
       }
@@ -132,10 +140,10 @@ export class TreatmentService {
     return this.transaction(async tx => {
       await this.access(tx, ctx, patientId);
       const budget = await this.scopedBudget(tx, ctx, patientId, id);
-      const clinic = await tx.clinic.findUniqueOrThrow({ where: { id: ctx.clinicId }, select: { name: true, timeZone: true } });
+      const clinic = await tx.clinic.findUniqueOrThrow({ where: { id: ctx.clinicId }, select: { name: true, timeZone: true, clinicalSpecialty: true } });
       const patient = await tx.patient.findFirstOrThrow({ where: { id: patientId, clinicId: ctx.clinicId }, select: { firstName: true, lastName: true, secondLastName: true } });
       const { payments, ...snapshot } = budget;
-      return { clinic, patient, budget: { ...snapshot, ...budgetFinances(budget.total, payments) } };
+      return { clinic: { ...clinic, dentalClinicalTools: capabilitiesFor(clinic.clinicalSpecialty).dentalClinicalTools }, patient, budget: { ...snapshot, ...budgetFinances(budget.total, payments) } };
     });
   }
   createPayment(ctx: AuthContext, patientId: string, id: string, body: unknown) {

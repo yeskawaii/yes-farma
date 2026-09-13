@@ -1,3 +1,4 @@
+import { useClinicCapabilities } from '../../core/auth/AuthProvider';
 import { useState } from 'react';
 import { Modal } from '../../shared/components/Modal/Modal';
 import { treatmentApi } from './api';
@@ -14,6 +15,7 @@ export function BudgetSummary({ subtotal, discount }: { subtotal: number; discou
 }
 
 export function BudgetEditor({ patientId, treatments, budget, onClose, onSaved }: { patientId: string; treatments: Treatment[]; budget?: Budget; onClose: () => void; onSaved: (budget: Budget) => void }) {
+  const capabilities = useClinicCapabilities();
   const [saved, setSaved] = useState(budget);
   const [selected, setSelected] = useState<string[]>([]);
   const [discount, setDiscount] = useState(budget?.discount || '0');
@@ -37,7 +39,7 @@ export function BudgetEditor({ patientId, treatments, budget, onClose, onSaved }
       {error && <p role="alert" className="rounded-lg bg-red-50 text-red-700 p-3">{error}</p>}
       <fieldset disabled={busy} className="space-y-4">
         <legend className="font-semibold mb-2">1. Tratamientos {saved && `· ${saved.folio || saved.id.slice(0, 8)}`}</legend>
-        {saved ? saved.items.map(i => <p key={i.id} className="flex justify-between gap-3"><span>{i.name}{i.toothNumber && ` · Pieza ${i.toothNumber}`}</span><span>{formatMoney(i.price)}</span></p>) : treatments.filter(t => t.status !== 'CANCELLED').map(t => <label key={t.id} className="flex items-center gap-3 border border-slate-200 rounded-lg p-3 min-h-11 cursor-pointer hover:bg-blue-50"><input type="checkbox" className="size-5 shrink-0 accent-blue-600" aria-label={`Incluir ${t.name} en presupuesto`} checked={selected.includes(t.id)} onChange={e => setSelected(ids => e.target.checked ? [...ids, t.id] : ids.filter(id => id !== t.id))} /><span className="flex-1">{t.name}{t.toothNumber && ` · Pieza ${t.toothNumber}`}</span><span>{formatMoney(t.price)}</span></label>)}
+        {saved ? saved.items.map(i => <p key={i.id} className="flex justify-between gap-3"><span>{i.name}{capabilities?.dentalClinicalTools && i.toothNumber && ` · Pieza ${i.toothNumber}`}</span><span>{formatMoney(i.price)}</span></p>) : treatments.filter(t => t.status !== 'CANCELLED').map(t => <label key={t.id} className="flex items-center gap-3 border border-slate-200 rounded-lg p-3 min-h-11 cursor-pointer hover:bg-blue-50"><input type="checkbox" className="size-5 shrink-0 accent-blue-600" aria-label={`Incluir ${t.name} en presupuesto`} checked={selected.includes(t.id)} onChange={e => setSelected(ids => e.target.checked ? [...ids, t.id] : ids.filter(id => id !== t.id))} /><span className="flex-1">{t.name}{capabilities?.dentalClinicalTools && t.toothNumber && ` · Pieza ${t.toothNumber}`}</span><span>{formatMoney(t.price)}</span></label>)}
         {!saved && <p className="text-sm text-slate-600">{selected.length} tratamientos seleccionados (máximo 100).</p>}
         <label className="block font-semibold">2. Descuento · monto fijo ($ MXN)<input aria-describedby="discount-help" aria-invalid={!valid} required type="number" min="0" max={subtotal / 100} step="0.01" className={fieldClass} value={discount} onChange={e => { setDiscount(e.target.value); setSuccess(''); }} /></label>
         <p id="discount-help" className={`text-sm ${valid ? 'text-slate-600' : 'text-red-700'}`}>{valid ? 'Importe en pesos mexicanos. Puedes corregirlo antes o después de guardar, mientras el presupuesto sea borrador o presentado.' : `Introduce un monto entre $0.00 y ${formatMoney(subtotal / 100)}, con hasta dos decimales.`}</p>

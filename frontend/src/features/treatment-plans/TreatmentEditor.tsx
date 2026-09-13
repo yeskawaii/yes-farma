@@ -1,3 +1,4 @@
+import { useClinicCapabilities } from '../../core/auth/AuthProvider';
 import { useState } from 'react';
 import { Modal } from '../../shared/components/Modal/Modal';
 import { ProfessionalSelector } from '../appointments/components/ProfessionalSelector';
@@ -8,6 +9,7 @@ import { treatmentLabels } from './types';
 import type { Procedure, Treatment, TreatmentInput, TreatmentStatus } from './types';
 import { fieldClass, buttonClass, secondaryButtonClass, surfaceLabels } from './presentation';
 export function TreatmentEditor({ patientId, catalog, item, toothNumber, onClose, onSaved }: { patientId: string; catalog: Procedure[]; item?: Treatment; toothNumber?: number; onClose: () => void; onSaved: () => void }) {
+  const capabilities = useClinicCapabilities();
   const [form, setForm] = useState<TreatmentInput>(() => item ? {
     procedureId: item.procedureId, name: item.name, description: item.description, price: item.price, toothNumber: item.toothNumber,
     surfaces: item.surfaces, status: item.status, plannedAt: item.plannedAt?.slice(0, 10) || null, completedAt: item.completedAt?.slice(0, 10) || null,
@@ -32,12 +34,12 @@ export function TreatmentEditor({ patientId, catalog, item, toothNumber, onClose
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <label className="text-sm">Precio (MXN)<input required type="number" min="0" max="9999999999.99" step="0.01" className={fieldClass} value={form.price} onChange={e => change('price', e.target.value)} /></label>
           <label className="text-sm">Estado clínico<select className={fieldClass} value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as TreatmentStatus, completedAt: e.target.value === 'COMPLETED' ? f.completedAt : null }))}>{Object.entries(treatmentLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></label>
-          <label className="text-sm">Pieza dental<select className={fieldClass} value={form.toothNumber || ''} onChange={e => setForm(f => ({ ...f, toothNumber: Number(e.target.value) || null, surfaces: [] }))}><option value="">Sin pieza específica</option>{Object.entries(FDI_TOOTH_NAMES).map(([n, name]) => <option key={n} value={n}>{n} — {name}</option>)}</select></label>
+          {capabilities?.dentalClinicalTools && <label className="text-sm">Pieza dental<select className={fieldClass} value={form.toothNumber || ''} onChange={e => setForm(f => ({ ...f, toothNumber: Number(e.target.value) || null, surfaces: [] }))}><option value="">Sin pieza específica</option>{Object.entries(FDI_TOOTH_NAMES).map(([n, name]) => <option key={n} value={n}>{n} — {name}</option>)}</select></label>}
           <ProfessionalSelector value={form.professionalMembershipId || ''} onChange={id => change('professionalMembershipId', id || null)} />
           <label className="text-sm">Fecha planeada<input type="date" className={fieldClass} value={form.plannedAt || ''} onChange={e => change('plannedAt', e.target.value || null)} /></label>
           {form.status === 'COMPLETED' && <label className="text-sm">Fecha de realización<input type="date" className={fieldClass} value={form.completedAt || ''} onChange={e => change('completedAt', e.target.value || null)} /></label>}
         </div>
-        {form.toothNumber && <fieldset><legend className="text-sm mb-2">Superficies (opcional)</legend><div className="flex flex-wrap gap-3">{Object.entries(surfaceLabels).filter(([s]) => s !== ((form.toothNumber! % 10 <= 3) ? 'OCCLUSAL' : 'INCISAL')).map(([s, label]) => <label key={s} className="text-sm flex gap-1"><input type="checkbox" checked={form.surfaces.includes(s as ToothSurface)} onChange={e => change('surfaces', e.target.checked ? s === 'WHOLE_TOOTH' ? ['WHOLE_TOOTH'] : [...form.surfaces.filter(v => v !== 'WHOLE_TOOTH'), s as ToothSurface] : form.surfaces.filter(v => v !== s))} />{label}</label>)}</div></fieldset>}
+        {capabilities?.dentalClinicalTools && form.toothNumber && <fieldset><legend className="text-sm mb-2">Superficies (opcional)</legend><div className="flex flex-wrap gap-3">{Object.entries(surfaceLabels).filter(([s]) => s !== ((form.toothNumber! % 10 <= 3) ? 'OCCLUSAL' : 'INCISAL')).map(([s, label]) => <label key={s} className="text-sm flex gap-1"><input type="checkbox" checked={form.surfaces.includes(s as ToothSurface)} onChange={e => change('surfaces', e.target.checked ? s === 'WHOLE_TOOTH' ? ['WHOLE_TOOTH'] : [...form.surfaces.filter(v => v !== 'WHOLE_TOOTH'), s as ToothSurface] : form.surfaces.filter(v => v !== s))} />{label}</label>)}</div></fieldset>}
         <label className="block text-sm">Observaciones<textarea maxLength={2000} className={fieldClass} value={form.notes || ''} onChange={e => change('notes', e.target.value || null)} /></label>
       </fieldset>
       <div className="flex flex-wrap justify-end gap-3"><button type="button" disabled={busy} onClick={onClose} className={secondaryButtonClass}>Cancelar</button><button disabled={busy} className={buttonClass}>{busy ? 'Guardando…' : 'Guardar tratamiento'}</button></div>

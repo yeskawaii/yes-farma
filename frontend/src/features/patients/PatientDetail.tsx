@@ -1,3 +1,4 @@
+import { useClinicCapabilities } from '../../core/auth/AuthProvider';
 import { PrescriptionSection } from '../prescriptions/PrescriptionSection';
 import { TreatmentPlanSection } from '../treatment-plans/TreatmentPlanSection';
 import { useState, useEffect } from 'react';
@@ -49,7 +50,8 @@ export function PatientDetail() {
 
   const canDeactivate = data?.status === 'ACTIVE' && (activeRole === 'OWNER' || activeRole === 'PROFESSIONAL');
   const canReactivate = data?.status === 'INACTIVE' && (activeRole === 'OWNER' || activeRole === 'PROFESSIONAL');
-  const canViewOdontogram = activeRole === 'OWNER' || activeRole === 'PROFESSIONAL';
+  const capabilities = useClinicCapabilities();
+  const canViewClinical = activeRole === 'OWNER' || activeRole === 'PROFESSIONAL';
 
   const [showReactivateDialog, setShowReactivateDialog] = useState(false);
   const [reactivating, setReactivating] = useState(false);
@@ -276,8 +278,8 @@ export function PatientDetail() {
           Resumen General
         </button>
 
-        {canViewOdontogram && <button role="tab" id="tab-treatments" aria-controls="tab-panel-treatments" aria-selected={currentTab === 'TREATMENTS'} onClick={() => { setTreatmentTooth(undefined); setCurrentTab('TREATMENTS'); }} className={`py-3.5 px-4 text-sm font-bold border-b-2 shrink-0 whitespace-nowrap ${currentTab === 'TREATMENTS' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500'}`}>Plan de tratamiento</button>}
-        {canViewOdontogram && (
+        {canViewClinical && <button role="tab" id="tab-treatments" aria-controls="tab-panel-treatments" aria-selected={currentTab === 'TREATMENTS'} onClick={() => { setTreatmentTooth(undefined); setCurrentTab('TREATMENTS'); }} className={`py-3.5 px-4 text-sm font-bold border-b-2 shrink-0 whitespace-nowrap ${currentTab === 'TREATMENTS' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500'}`}>Plan de tratamiento</button>}
+        {canViewClinical && capabilities?.odontogram && (
           <button
             role="tab"
             aria-selected={currentTab === 'ODONTOGRAM'}
@@ -295,7 +297,7 @@ export function PatientDetail() {
           </button>
         )}
 
-        {canViewOdontogram && <button role="tab" aria-selected={currentTab === 'PRESCRIPTIONS'} aria-controls="tab-panel-prescriptions" id="tab-prescriptions" onClick={() => setCurrentTab('PRESCRIPTIONS')} className={`py-3.5 px-4 text-sm font-bold border-b-2 ${currentTab === 'PRESCRIPTIONS' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500'}`}>Recetas</button>}
+        {canViewClinical && <button role="tab" aria-selected={currentTab === 'PRESCRIPTIONS'} aria-controls="tab-panel-prescriptions" id="tab-prescriptions" onClick={() => setCurrentTab('PRESCRIPTIONS')} className={`py-3.5 px-4 text-sm font-bold border-b-2 ${currentTab === 'PRESCRIPTIONS' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500'}`}>Recetas</button>}
         <button
           role="tab"
           aria-selected={currentTab === 'ENCOUNTERS'}
@@ -329,7 +331,7 @@ export function PatientDetail() {
         </button>
       </div>
 
-      {currentTab === 'TREATMENTS' && id && canViewOdontogram && <div role="tabpanel" id="tab-panel-treatments" aria-labelledby="tab-treatments"><TreatmentPlanSection key={id} patientId={id} readOnly={data.status !== 'ACTIVE'} initialTooth={treatmentTooth} onTooth={tooth => { setOdontogramTooth(tooth); setCurrentTab('ODONTOGRAM'); }} /></div>}
+      {currentTab === 'TREATMENTS' && id && canViewClinical && <div role="tabpanel" id="tab-panel-treatments" aria-labelledby="tab-treatments"><TreatmentPlanSection key={id} patientId={id} readOnly={data.status !== 'ACTIVE'} initialTooth={treatmentTooth} onTooth={tooth => { setOdontogramTooth(tooth); setCurrentTab('ODONTOGRAM'); }} /></div>}
       {/* TAB PANEL: OVERVIEW */}
       {currentTab === 'OVERVIEW' && (
         <div
@@ -393,6 +395,7 @@ export function PatientDetail() {
             </div>
 
             {/* Administrative Notes */}
+            {(data.guardianName || data.guardianPhone || data.guardianRelationship) && <section className="bg-white rounded-xl border border-slate-200 p-4"><h3 className="font-semibold">Responsable / contacto</h3><p>{data.guardianName} {data.guardianRelationship && `· ${data.guardianRelationship}`}</p><p>{data.guardianPhone}</p></section>}
             {data.administrativeNotes && (
               <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 shadow-sm">
                 <h2 className="text-lg font-bold text-amber-900 mb-2">Notas Administrativas</h2>
@@ -467,7 +470,7 @@ export function PatientDetail() {
       )}
 
       {/* TAB PANEL: ODONTOGRAM */}
-      {currentTab === 'ODONTOGRAM' && canViewOdontogram && id && (
+      {currentTab === 'ODONTOGRAM' && capabilities?.odontogram && canViewClinical && id && (
         <div
           id="tab-panel-odontogram"
           role="tabpanel"
@@ -490,7 +493,7 @@ export function PatientDetail() {
         </div>
       )}
 
-      {currentTab === 'PRESCRIPTIONS' && canViewOdontogram && id && <div id="tab-panel-prescriptions" role="tabpanel" aria-labelledby="tab-prescriptions"><PrescriptionSection patientId={id} patientName={fullName} readOnly={data.status !== 'ACTIVE'} /></div>}
+      {currentTab === 'PRESCRIPTIONS' && canViewClinical && id && <div id="tab-panel-prescriptions" role="tabpanel" aria-labelledby="tab-prescriptions"><PrescriptionSection patientId={id} patientName={fullName} readOnly={data.status !== 'ACTIVE'} /></div>}
       {/* TAB PANEL: DOCUMENTS */}
       {currentTab === 'DOCUMENTS' && id && (
         <div

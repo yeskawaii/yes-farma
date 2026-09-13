@@ -131,7 +131,7 @@ const vitalSignsSchema = z.object({
   temperatureCelsius: z.number().min(25).max(45).nullable().optional(),
   oxygenSaturationPercent: z.number().int().min(0).max(100).nullable().optional(),
   weightKg: z.number().min(0.5).max(500).nullable().optional(),
-  heightCm: z.number().int().min(20).max(300).nullable().optional(),
+  heightCm: z.number().min(20).max(300).nullable().optional(),
   measuredAt: isoStringWithOffsetOrZ.optional()
 })
   .strict()

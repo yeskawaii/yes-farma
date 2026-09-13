@@ -21,6 +21,9 @@ export interface PatientDetail {
   sexAtBirth?: 'FEMALE' | 'MALE' | 'INTERSEX' | 'UNKNOWN' | null;
   email?: string | null;
   phone?: string | null;
+  guardianName?: string | null;
+  guardianPhone?: string | null;
+  guardianRelationship?: string | null;
   administrativeNotes?: string | null;
   status: PatientStatus;
   createdAt: string;
@@ -50,6 +53,9 @@ export interface PatientFormInput {
   sexAtBirth?: 'FEMALE' | 'MALE' | 'INTERSEX' | 'UNKNOWN' | '';
   phone?: string;
   email?: string;
+  guardianName?: string;
+  guardianPhone?: string;
+  guardianRelationship?: string;
   administrativeNotes?: string;
   confirmPossibleDuplicate?: boolean;
 }

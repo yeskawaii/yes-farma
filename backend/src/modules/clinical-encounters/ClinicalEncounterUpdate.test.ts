@@ -169,8 +169,8 @@ test('ClinicalEncounter Update', async (t) => {
     await sub.test('oxygenSaturationPercent decimal se rechaza', () => {
       assert.throws(() => updateClinicalEncounterSchema.parse({ version: 1, vitalSigns: { oxygenSaturationPercent: 98.5 } }), /Expected integer/);
     });
-    await sub.test('heightCm decimal se rechaza', () => {
-      assert.throws(() => updateClinicalEncounterSchema.parse({ version: 1, vitalSigns: { heightCm: 175.5 } }), /Expected integer/);
+    await sub.test('heightCm decimal se conserva', () => {
+      assert.equal(updateClinicalEncounterSchema.parse({ version: 1, vitalSigns: { heightCm: 75.5 } }).vitalSigns?.heightCm, 75.5);
     });
     await sub.test('una fecha ISO con Z pero calendario imposible se rechaza', () => {
       assert.throws(() => updateClinicalEncounterSchema.parse({ version: 1, occurredAt: '2026-99-99T10:00:00Z' }), /be a valid date/);

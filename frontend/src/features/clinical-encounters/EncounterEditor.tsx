@@ -1,3 +1,4 @@
+import { useClinicCapabilities } from '../../core/auth/AuthProvider';
 import { PrescriptionSection } from '../prescriptions/PrescriptionSection';
 import { Modal } from '../../shared/components/Modal/Modal';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -101,6 +102,7 @@ export function EncounterEditor() {
     clinicalNotes: ''
   });
 
+  const capabilities = useClinicCapabilities();
   const [vitalSignsForm, setVitalSignsForm] = useState<VitalSignsState>({
     systolicBloodPressure: '',
     diastolicBloodPressure: '',
@@ -270,7 +272,7 @@ export function EncounterEditor() {
     if (err) return err;
     err = checkNumeric(form.weightKg, 'El peso', 0.5, 500, false);
     if (err) return err;
-    err = checkNumeric(form.heightCm, 'La estatura', 20, 300, true);
+    err = checkNumeric(form.heightCm, 'La talla', 20, 300, false);
     if (err) return err;
 
     return null;
@@ -960,7 +962,7 @@ export function EncounterEditor() {
             {renderVitalInput('Temperatura', 'temperatureCelsius', '°C', 25, 45, '0.1')}
             {renderVitalInput('Saturación de oxígeno', 'oxygenSaturationPercent', '%', 0, 100)}
             {renderVitalInput('Peso', 'weightKg', 'kg', 0.5, 500, '0.1')}
-            {renderVitalInput('Estatura', 'heightCm', 'cm', 20, 300)}
+            {renderVitalInput('Talla', 'heightCm', 'cm', 20, 300, '0.1')}
           </div>
         ) : (
           !data.vitalSigns ? (
@@ -974,7 +976,7 @@ export function EncounterEditor() {
               {renderReadonlyVital('Temperatura', data.vitalSigns.temperatureCelsius, '°C')}
               {renderReadonlyVital('Saturación de oxígeno', data.vitalSigns.oxygenSaturationPercent, '%')}
               {renderReadonlyVital('Peso', data.vitalSigns.weightKg, 'kg')}
-              {renderReadonlyVital('Estatura', data.vitalSigns.heightCm, 'cm')}
+              {renderReadonlyVital('Talla', data.vitalSigns.heightCm, 'cm')}
             </div>
           )
         )}
@@ -1336,11 +1338,11 @@ export function EncounterEditor() {
 
       {patientId && encounterId && (
         <>
-          <OdontogramView
+          {capabilities?.odontogram && <OdontogramView
             patientId={patientId}
             encounterId={encounterId}
             readOnly={!canEditEncounter}
-          />
+          />}
 
           <PrescriptionSection patientId={patientId} patientName={data.patient.displayName} encounterId={encounterId} />
           <PatientDocumentList
