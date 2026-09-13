@@ -20,7 +20,11 @@ export function prescriptionPrintHtml(r: Prescription) {
   const s = r.snapshot;
   if (!s || r.status === 'DRAFT') throw new Error('Solo las recetas emitidas tienen un documento imprimible.');
   const p = s.professional;
-  const specialty = specialtyLabel(p.specialty);
+  // Only show compatible professional credentials; snapshots without context keep legacy behavior.
+  const showProfessionalSpecialty = s.clinic.clinicalSpecialty == null
+    || p.specialty === s.clinic.clinicalSpecialty;
+  const specialty = showProfessionalSpecialty ? specialtyLabel(p.specialty) : '';
+  const specialtyLicense = showProfessionalSpecialty ? p.specialtyLicense : null;
   // Legacy snapshots used the dental title. Never infer their context from today's clinic or professional.
   const documentSpecialty = s.clinic.clinicalSpecialty ?? 'DENTISTRY';
   const title = documentSpecialty === 'PEDIATRICS' ? 'RECETA PEDIÁTRICA' : 'RECETA ODONTOLÓGICA';
@@ -41,8 +45,8 @@ export function prescriptionPrintHtml(r: Prescription) {
   <header><div class="clinic"><h1>${escape(s.clinic.name)}</h1><p class="contact">${escape(p.address)}</p>${p.phone ? `<p class="contact">Tel. ${escape(p.phone)}</p>` : ''}</div><div class="document"><h2>${escape(title)}</h2><p class="date">Fecha: ${escape(new Date(s.issuedAt).toLocaleDateString('es-MX', { timeZone: s.clinic.timeZone }))}</p><div class="folio"><span class="label">FOLIO</span><br><span class="folio-value">${escape(s.folio)}</span></div></div></header>
   ${r.status === 'CANCELLED' ? `<div class="void-watermark">RECETA ANULADA</div><div class="cancellation"><div class="cancelled">RECETA ANULADA</div><p>Motivo: ${escape(r.cancellationReason)}</p><p>Anulada: ${escape(new Date(r.cancelledAt!).toLocaleDateString('es-MX', { timeZone: s.clinic.timeZone }))}</p></div>` : ''}
   <section class="details"><div class="patient"><div><span class="label">PACIENTE</span><p class="patient-name">${escape(s.patient.name)}</p></div><div class="birth"><span class="label">FECHA DE NACIMIENTO</span><p>${escape(s.patient.birthDate.split('-').reverse().join('/'))}</p></div></div>
-  <div class="professional"><p><span class="professional-name">${escape(p.name)}</span>${specialty ? ` · ${escape(specialty)}` : ''}</p><p class="credentials">Cédula profesional: ${escape(p.license)}${p.specialtyLicense ? ` · Cédula de especialidad: ${escape(p.specialtyLicense)}` : ''}</p></div></section>
+  <div class="professional"><p><span class="professional-name">${escape(p.name)}</span>${specialty ? ` · ${escape(specialty)}` : ''}</p><p class="credentials">Cédula profesional: ${escape(p.license)}${specialtyLicense ? ` · Cédula de especialidad: ${escape(specialtyLicense)}` : ''}</p></div></section>
   <div class="medications">${s.items.map(i => `<section class="medication"><div class="rp">Rp.</div><div class="medication-body"><h3>${escape(i.medication.toUpperCase())} ${escape(i.concentration)}${i.brand ? ` (${escape(i.brand)})` : ''}</h3><p class="form">${escape(i.form)}</p><p class="directions"><strong>Modo de uso:</strong> ${escape(printDirections(i))}</p><p class="quantity"><strong>Cantidad:</strong> ${escape(i.quantity)}</p>${i.instructions ? `<p class="additional"><strong>Instrucciones adicionales:</strong> ${escape(i.instructions)}</p>` : ''}</div></section>`).join('')}</div>
   ${s.generalInstructions ? `<section class="general"><h3>INDICACIONES GENERALES</h3><p>${escape(s.generalInstructions)}</p></section>` : ''}
-  <div class="closing"><div class="signature"><hr><p class="signature-label">Firma del profesional</p><p class="signature-name">${escape(p.name)}</p>${specialty ? `<p>${escape(specialty)}</p>` : ''}<p class="credentials">Cédula profesional: ${escape(p.license)}</p>${p.specialtyLicense ? `<p class="credentials">Cédula de especialidad: ${escape(p.specialtyLicense)}</p>` : ''}</div><footer>Folio ${escape(s.folio)} · YESKIRA${r.status === 'CANCELLED' ? ' · RECETA ANULADA' : ''}</footer></div></main></body></html>`;
+  <div class="closing"><div class="signature"><hr><p class="signature-label">Firma del profesional</p><p class="signature-name">${escape(p.name)}</p>${specialty ? `<p>${escape(specialty)}</p>` : ''}<p class="credentials">Cédula profesional: ${escape(p.license)}</p>${specialtyLicense ? `<p class="credentials">Cédula de especialidad: ${escape(specialtyLicense)}</p>` : ''}</div><footer>Folio ${escape(s.folio)} · YESKIRA${r.status === 'CANCELLED' ? ' · RECETA ANULADA' : ''}</footer></div></main></body></html>`;
 }
